@@ -1,0 +1,17 @@
+[Unit]
+Description=VPN Manager Web Service
+After=network.target vpn-core.service
+Wants=vpn-core.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=__WEB_DIR__
+ExecStart=/usr/bin/python3 __WEB_DIR__/app.py
+Restart=always
+RestartSec=5
+Environment="PYTHONUNBUFFERED=1"
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,21 @@
+database:
+  host: localhost
+  port: 5432
+  name: vpn_db
+  user: vpn_core
+  password: "CHANGE_ME"
+
+master_key_file: /etc/vpn-manager/master.key
+encryption_key: "CHANGE_ME_TO_A_RANDOM_STRING"
+
+log:
+  level: debug
+  file: /var/log/vpn-manager/core.log
+
+openvpn:
+  binary: /usr/sbin/openvpn
+  config_dir: /etc/openvpn
+  management_socket: /var/run/openvpn/management.sock
+
+pki:
+  ca_key: /var/lib/vpn-manager/pki/ca.key

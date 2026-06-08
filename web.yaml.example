@@ -1,0 +1,19 @@
+database:
+  host: localhost
+  port: 5432
+  name: vpn_db
+  user: vpn_web
+  # password is read from /etc/vpn-manager/web-db-auth
+
+flask:
+  secret_key: CHANGE_ME_TO_A_RANDOM_STRING
+  debug: false
+  host: 0.0.0.0
+  port: 5000
+
+socket:
+  core_socket: /var/run/vpn-manager/core.sock
+
+log:
+  level: debug
+  file: /var/log/vpn-manager/web.log

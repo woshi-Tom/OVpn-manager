@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-title animate-in">
+    <i class="bi bi-journal-text"></i>
+    <span>系统日志</span>
+</div>
+
+<div class="row mb-4 animate-in delay-1">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-body py-3">
+                <div class="d-flex justify-content-between align-items-center flex-wrap">
+                    <div class="btn-group" role="group">
+                        <a href="/logs?level=all" class="btn btn-outline-primary {% if current_level == 'all' %}active{% endif %}">
+                            <i class="bi bi-list-ul me-1"></i> 全部
+                        </a>
+                        <a href="/logs?level=info" class="btn btn-outline-info {% if current_level == 'info' %}active{% endif %}">
+                            <i class="bi bi-info-circle me-1"></i> Info
+                        </a>
+                        <a href="/logs?level=warn" class="btn btn-outline-warning {% if current_level == 'warn' %}active{% endif %}">
+                            <i class="bi bi-exclamation-triangle me-1"></i> 警告
+                        </a>
+                        <a href="/logs?level=error" class="btn btn-outline-danger {% if current_level == 'error' %}active{% endif %}">
+                            <i class="bi bi-x-circle me-1"></i> 错误
+                        </a>
+                    </div>
+                    <div>
+                        <button class="btn btn-secondary" onclick="refreshLogs()">
+                            <i class="bi bi-arrow-clockwise me-1"></i> 刷新
+                        </button>
+                        <span class="text-muted ms-2"><small>每30秒自动刷新</small></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card animate-in delay-2">
+    <div class="card-header">
+        <div class="d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-list-check"></i> 日志列表</span>
+            <span class="badge bg-secondary">{{ logs|length }} 条</span>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th><i class="bi bi-clock"></i> 时间</th>
+                        <th><i class="bi bi-tag"></i> 级别</th>
+                        <th><i class="bi bi-pc"></i> 来源</th>
+                        <th><i class="bi bi-chat-left-text"></i> 消息</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in logs %}
+                    <tr>
+                        <td><small class="text-muted">{{ log.timestamp }}</small></td>
+                        <td>
+                            {% if log.level == 'error' %}
+                                <span class="badge badge-stopped"><i class="bi bi-x-circle me-1"></i>Error</span>
+                            {% elif log.level == 'warn' %}
+                                <span class="badge bg-warning bg-opacity-10 text-warning"><i class="bi bi-exclamation-triangle me-1"></i>Warning</span>
+                            {% elif log.level == 'info' %}
+                                <span class="badge badge-running"><i class="bi bi-info-circle me-1"></i>Info</span>
+                            {% elif log.level == 'debug' %}
+                                <span class="badge bg-secondary bg-opacity-10 text-secondary"><i class="bi bi-bug me-1"></i>Debug</span>
+                            {% else %}
+                                <span class="badge bg-secondary">{{ log.level }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if log.source == 'core' %}
+                                <span class="badge bg-primary bg-opacity-10 text-primary"><i class="bi bi-cpu me-1"></i>Core</span>
+                            {% elif log.source == 'web' %}
+                                <span class="badge bg-info bg-opacity-10 text-info"><i class="bi bi-globe me-1"></i>Web</span>
+                            {% else %}
+                                <span class="badge bg-secondary">{{ log.source }}</span>
+                            {% endif %}
+                        </td>
+                        <td style="max-width: 500px;">
+                            <code class="text-wrap">{{ log.message }}</code>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="4" class="text-center py-5 text-muted">
+                            <i class="bi bi-inbox" style="font-size: 3rem;"></i>
+                            <p class="mt-2">暂无日志记录</p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+function refreshLogs() {
+    const params = new URLSearchParams(window.location.search);
+    const level = params.get('level') || 'all';
+    window.location.href = `/logs?level=${level}`;
+}
+
+// 每30秒自动刷新
+setInterval(refreshLogs, 30000);
+</script>
+{% endblock %}

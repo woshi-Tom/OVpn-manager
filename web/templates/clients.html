@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 animate-in">
+    <div class="page-title mb-0">
+        <i class="bi bi-people"></i>
+        <span>客户端管理</span>
+    </div>
+    <a href="/clients/add" class="btn btn-primary">
+        <i class="bi bi-plus-lg me-1"></i> 添加客户端
+    </a>
+</div>
+
+<div class="card animate-in delay-1">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th><i class="bi bi-hash"></i> ID</th>
+                        <th><i class="bi bi-person"></i> 用户名</th>
+                        <th><i class="bi bi-tag"></i> 客户端名称</th>
+                        <th><i class="bi bi-envelope"></i> 邮箱</th>
+                        <th><i class="bi bi-toggle-on"></i> 状态</th>
+                        <th><i class="bi bi-patch-check"></i> 证书状态</th>
+                        <th><i class="bi bi-gear"></i> 关联配置</th>
+                        <th><i class="bi bi-hdd"></i> 分配IP</th>
+                        <th><i class="bi bi-sliders"></i> 操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for client in clients %}
+                    <tr>
+                        <td><code class="text-muted">{{ client.id }}</code></td>
+                        <td><strong><i class="bi bi-person text-primary me-1"></i>{{ client.username }}</strong></td>
+                        <td>{{ client.client_name or '-' }}</td>
+                        <td>{{ client.email or '-' }}</td>
+                        <td>
+                            {% if client.disabled %}
+                                <span class="badge bg-secondary"><i class="bi bi-x-circle me-1"></i>禁用</span>
+                            {% else %}
+                                <span class="badge badge-running"><i class="bi bi-check-circle me-1"></i>启用</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if client.revoked %}
+                                <span class="badge badge-stopped"><i class="bi bi-x-octagon me-1"></i>已撤销</span>
+                            {% else %}
+                                <span class="badge badge-running"><i class="bi bi-shield-check me-1"></i>正常</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if client.config_name %}
+                                <span class="badge bg-primary bg-opacity-10 text-primary">{{ client.config_name }}</span>
+                            {% else %}
+                                <span class="text-muted">未关联</span>
+                            {% endif %}
+                        </td>
+                        <td><code>{{ client.assigned_ip or '动态分配' }}</code></td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-warning btn-kick" data-id="{{ client.id }}" data-username="{{ client.username }}" title="踢出">
+                                    <i class="bi bi-x-circle"></i>
+                                </button>
+                                <button class="btn btn-outline-primary btn-gen-config" data-id="{{ client.profile_id }}" title="下载配置">
+                                    <i class="bi bi-download"></i>
+                                </button>
+                                {% if not client.revoked %}
+                                <button class="btn btn-outline-danger btn-revoke" data-id="{{ client.profile_id }}" title="撤销证书">
+                                    <i class="bi bi-x-octagon"></i>
+                                </button>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="9" class="text-center py-5 text-muted">
+                            <i class="bi bi-inbox" style="font-size: 3rem;"></i>
+                            <p class="mt-2">暂无客户端数据</p>
+                            <a href="/clients/add" class="btn btn-primary btn-sm">
+                                <i class="bi bi-plus-lg me-1"></i> 添加第一个客户端
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- 撤销确认模态框 -->
+<div class="modal fade" id="revokeModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title"><i class="bi bi-x-octagon me-2"></i>撤销客户端证书</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>确定要撤销此客户端的证书吗？撤销后将无法连接VPN。</p>
+                <div class="mb-3">
+                    <label class="form-label">撤销原因</label>
+                    <input type="text" class="form-control" id="revokeReason" value="revoked by admin">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-danger" id="confirmRevoke">确认撤销</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let revokeClientId = null;
+let revokeModal = null;
+
+document.addEventListener('DOMContentLoaded', function() {
+    revokeModal = new bootstrap.Modal(document.getElementById('revokeModal'));
+});
+
+// 踢出客户端
+document.querySelectorAll('.btn-kick').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const clientId = this.dataset.id;
+        const username = this.dataset.username;
+        
+        if (confirm(`确定要踢出客户端 ${username} 吗？`)) {
+            fetch(`/clients/${clientId}/kick`, { method: 'POST' })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === 'ok') {
+                        alert('✅ 踢出成功');
+                    } else {
+                        alert('❌ 踢出失败: ' + data.message);
+                    }
+                })
+                .catch(err => alert('❌ 请求失败: ' + err));
+        }
+    });
+});
+
+// 下载配置
+document.querySelectorAll('.btn-gen-config').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const clientId = this.dataset.id;
+        window.location.href = `/clients/${clientId}/download-config`;
+    });
+});
+
+// 撤销证书
+document.querySelectorAll('.btn-revoke').forEach(btn => {
+    btn.addEventListener('click', function() {
+        revokeClientId = this.dataset.id;
+        revokeModal.show();
+    });
+});
+
+// 确认撤销
+document.getElementById('confirmRevoke').addEventListener('click', function() {
+    if (!revokeClientId) return;
+    
+    const reason = document.getElementById('revokeReason').value;
+    
+    fetch(`/clients/${revokeClientId}/revoke`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({reason: reason})
+    })
+    .then(res => res.json())
+    .then(data => {
+        revokeModal.hide();
+        if (data.status === 'ok') {
+            alert('✅ 证书已撤销');
+            location.reload();
+        } else {
+            alert('❌ 撤销失败: ' + data.message);
+        }
+    })
+    .catch(err => alert('❌ 请求失败: ' + err));
+});
+</script>
+{% endblock %}

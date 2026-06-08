@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>生成 CA 证书</h1>
+<div class="card">
+    <div class="card-body">
+        <form id="ca-form">
+            <div class="mb-3">
+                <label class="form-label">CA 证书名称 (Common Name)</label>
+                <input type="text" name="common_name" class="form-control" placeholder="如: VPN CA" required>
+                <small class="text-muted">用于标识CA证书</small>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">有效期 (天)</label>
+                <input type="number" name="valid_days" class="form-control" value="3650" min="1" max="36500">
+                <small class="text-muted">建议设置为10年(3650天)</small>
+            </div>
+            <button type="submit" class="btn btn-primary">生成 CA 证书</button>
+            <a href="/configs" class="btn btn-secondary">返回</a>
+        </form>
+    </div>
+</div>
+
+<script>
+document.getElementById('ca-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const formData = new FormData(this);
+    const data = Object.fromEntries(formData);
+    
+    fetch('/configs/cert/generate-ca', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    })
+    .then(res => res.json())
+    .then(resp => {
+        if (resp.status === 'ok') {
+            alert('CA证书生成成功！');
+            window.location.href = '/configs';
+        } else {
+            alert('生成失败: ' + resp.message);
+        }
+    })
+    .catch(err => alert('请求失败: ' + err));
+});
+</script>
+{% endblock %}

@@ -1,0 +1,326 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-title animate-in">
+    <i class="bi bi-speedometer2"></i>
+    <span>仪表盘</span>
+    <span class="badge bg-primary ms-2" style="font-size: 0.7rem; vertical-align: middle;">实时监控</span>
+</div>
+
+<!-- 统计卡片 -->
+<div class="row mb-4">
+    <div class="col-md-4 animate-in delay-1">
+        <div class="card stat-card bg-primary text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-title">活跃用户</h6>
+                        <h2 class="mb-0" id="stat-active">{{ stats.active_users }}</h2>
+                        <small class="opacity-75"><i class="bi bi-person-plus"></i> 已注册用户</small>
+                    </div>
+                    <i class="bi bi-people stat-icon"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 animate-in delay-2">
+        <div class="card stat-card bg-success text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-title">当前在线</h6>
+                        <h2 class="mb-0" id="stat-online">{{ stats.online_users }}</h2>
+                        <small class="opacity-75"><i class="bi bi-activity"></i> 实时连接</small>
+                    </div>
+                    <i class="bi bi-person-check stat-icon"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 animate-in delay-3">
+        <div class="card stat-card bg-info text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-title">VPN 配置</h6>
+                        <h2 class="mb-0" id="stat-configs">{{ stats.total_configs }}</h2>
+                        <small class="opacity-75"><i class="bi bi-gear"></i> 服务器配置</small>
+                    </div>
+                    <i class="bi bi-gear stat-icon"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <!-- 负载趋势图 -->
+    <div class="col-md-8 animate-in delay-2">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-graph-up"></i> 在线用户趋势 <span class="text-muted">(最近15分钟)</span>
+            </div>
+            <div class="card-body">
+                <canvas id="loadChart" height="120"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 会话列表 -->
+    <div class="col-md-4 animate-in delay-3">
+        <div class="card h-100">
+            <div class="card-header">
+                <i class="bi bi-clock-history"></i> 连接会话
+            </div>
+            <div class="card-body p-0">
+                <!-- 活跃会话 -->
+                <div class="session-card">
+                    <div class="card-header bg-success text-white d-flex justify-content-between align-items-center cursor-pointer" onclick="toggleSession('active')">
+                        <span><i class="bi bi-lightning-charge"></i> 刚刚连接</span>
+                        <span class="badge bg-white text-success"><span id="count-active">0</span> <i class="bi bi-chevron-down" id="icon-active"></i></span>
+                    </div>
+                    <div class="card-body p-0 session-list" id="list-active" style="display: none; max-height: 150px; overflow-y: auto;">
+                        <table class="table table-sm mb-0"><tbody></tbody></table>
+                    </div>
+                </div>
+                
+                <!-- 3-9分钟 -->
+                <div class="session-card">
+                    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center cursor-pointer" onclick="toggleSession('3-9min')">
+                        <span><i class="bi bi-clock"></i> 3-9分钟前</span>
+                        <span class="badge bg-white text-primary"><span id="count-3-9min">0</span> <i class="bi bi-chevron-down" id="icon-3-9min"></i></span>
+                    </div>
+                    <div class="card-body p-0 session-list" id="list-3-9min" style="display: none; max-height: 150px; overflow-y: auto;">
+                        <table class="table table-sm mb-0"><tbody></tbody></table>
+                    </div>
+                </div>
+                
+                <!-- 9-15分钟 -->
+                <div class="session-card">
+                    <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center cursor-pointer" onclick="toggleSession('9-15min')">
+                        <span><i class="bi bi-clock-history"></i> 9-15分钟前</span>
+                        <span class="badge bg-white text-secondary"><span id="count-9-15min">0</span> <i class="bi bi-chevron-down" id="icon-9-15min"></i></span>
+                    </div>
+                    <div class="card-body p-0 session-list" id="list-9-15min" style="display: none; max-height: 150px; overflow-y: auto;">
+                        <table class="table table-sm mb-0"><tbody></tbody></table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 在线客户端表格 -->
+<div class="card animate-in delay-4">
+    <div class="card-header">
+        <div class="d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-person-check"></i> 在线客户端列表</span>
+            <span class="badge bg-primary" id="online-count">0</span>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-hover" id="online-table">
+            <thead>
+                <tr>
+                    <th><i class="bi bi-person"></i> 用户名</th>
+                    <th><i class="bi bi-hdd"></i> 虚拟IP</th>
+                    <th><i class="bi bi-globe"></i> 真实IP</th>
+                    <th><i class="bi bi-clock"></i> 连接时间</th>
+                    <th><i class="bi bi-upload"></i> 已发送</th>
+                    <th><i class="bi bi-download"></i> 已接收</th>
+                    <th><i class="bi bi-graph-up"></i> 状态</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+        <div id="no-online" class="text-center py-5 text-muted" style="display: none;">
+            <i class="bi bi-inbox" style="font-size: 3rem;"></i>
+            <p class="mt-2">暂无在线用户</p>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+let loadChart = null;
+let expanded = { active: false, '3-9min': false, '9-15min': false };
+
+// 格式化字节数
+function formatBytes(bytes) {
+    if (!bytes || bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+// 格式化时间
+function formatTime(isoString) {
+    if (!isoString) return '-';
+    const d = new Date(isoString);
+    return d.toLocaleTimeString();
+}
+
+// 格式化日期时间
+function formatDateTime(isoString) {
+    if (!isoString) return '-';
+    const d = new Date(isoString);
+    return d.toLocaleString('zh-CN', { 
+        month: 'short', 
+        day: 'numeric', 
+        hour: '2-digit', 
+        minute: '2-digit' 
+    });
+}
+
+// 折叠会话列表
+function toggleSession(key) {
+    const list = document.getElementById('list-' + key);
+    const icon = document.getElementById('icon-' + key);
+    expanded[key] = !expanded[key];
+    list.style.display = expanded[key] ? 'block' : 'none';
+    icon.className = expanded[key] ? 'bi bi-chevron-up' : 'bi bi-chevron-down';
+}
+
+// 渲染会话列表
+function renderSessionList(key, sessions) {
+    document.getElementById('count-' + key).innerText = sessions.length;
+    const tbody = document.querySelector('#list-' + key + ' table tbody');
+    tbody.innerHTML = '';
+    
+    if (sessions.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="2" class="text-center text-muted py-3">暂无数据</td></tr>';
+        return;
+    }
+    
+    sessions.forEach(s => {
+        const row = tbody.insertRow();
+        row.insertCell().innerHTML = `<i class="bi bi-person me-1 text-primary"></i>${s.username || '-'}`;
+        row.insertCell().innerText = s.virtual_ip || '-';
+    });
+}
+
+// 刷新在线客户端
+function refreshOnline() {
+    fetch('/api/online-clients')
+        .then(r => r.json())
+        .then(data => {
+            const tbody = document.querySelector('#online-table tbody');
+            tbody.innerHTML = '';
+            
+            document.getElementById('online-count').innerText = data.length;
+            document.getElementById('stat-online').innerText = data.length;
+            
+            if (data.length === 0) {
+                document.getElementById('online-table').style.display = 'none';
+                document.getElementById('no-online').style.display = 'block';
+                return;
+            }
+            
+            document.getElementById('online-table').style.display = 'table';
+            document.getElementById('no-online').style.display = 'none';
+            
+            data.forEach(s => {
+                const row = tbody.insertRow();
+                row.innerHTML = `
+                    <td><i class="bi bi-person me-1 text-primary"></i><strong>${s.username || '-'}</strong></td>
+                    <td><code class="bg-light px-2 py-1 rounded">${s.virtual_ip || '-'}</code></td>
+                    <td><code class="bg-light px-2 py-1 rounded">${s.real_ip || '-'}</code></td>
+                    <td><small class="text-muted">${formatDateTime(s.connected_since)}</small></td>
+                    <td><span class="text-success"><i class="bi bi-upload"></i> ${formatBytes(s.bytes_sent)}</span></td>
+                    <td><span class="text-info"><i class="bi bi-download"></i> ${formatBytes(s.bytes_received)}</span></td>
+                    <td><span class="badge badge-running"><i class="bi bi-activity"></i> 在线</span></td>
+                `;
+            });
+        });
+}
+
+// 刷新负载历史
+function refreshLoadHistory() {
+    fetch('/api/load-history')
+        .then(r => r.json())
+        .then(data => {
+            const labels = data.map(d => {
+                const d2 = new Date(d.time_point);
+                return d2.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            });
+            const values = data.map(d => parseInt(d.online_count) || 0);
+            
+            const ctx = document.getElementById('loadChart').getContext('2d');
+            
+            // 创建渐变
+            const gradient = ctx.createLinearGradient(0, 0, 0, 300);
+            gradient.addColorStop(0, 'rgba(79, 70, 229, 0.3)');
+            gradient.addColorStop(1, 'rgba(79, 70, 229, 0)');
+            
+            if (loadChart) {
+                loadChart.data.labels = labels;
+                loadChart.data.datasets[0].data = values;
+                loadChart.update('none');
+            } else {
+                loadChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: '在线用户',
+                            data: values,
+                            borderColor: '#4F46E5',
+                            backgroundColor: gradient,
+                            fill: true,
+                            tension: 0.4,
+                            borderWidth: 3,
+                            pointRadius: 4,
+                            pointBackgroundColor: '#4F46E5',
+                            pointBorderColor: '#fff',
+                            pointBorderWidth: 2,
+                            pointHoverRadius: 6
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: { stepSize: 1 },
+                                grid: { color: 'rgba(0,0,0,0.05)' }
+                            },
+                            x: {
+                                grid: { display: false }
+                            }
+                        },
+                        interaction: {
+                            intersect: false,
+                            mode: 'index'
+                        }
+                    }
+                });
+            }
+        });
+}
+
+// 刷新会话时间分组
+function refreshSessionsByTime() {
+    fetch('/api/sessions-by-time')
+        .then(r => r.json())
+        .then(data => {
+            renderSessionList('active', data.active || []);
+            renderSessionList('3-9min', data['3-9min'] || []);
+            renderSessionList('9-15min', data['9-15min'] || []);
+        });
+}
+
+// 定期刷新
+setInterval(refreshOnline, 5000);
+setInterval(refreshLoadHistory, 10000);
+setInterval(refreshSessionsByTime, 10000);
+
+// 初始加载
+refreshOnline();
+refreshLoadHistory();
+refreshSessionsByTime();
+</script>
+{% endblock %}

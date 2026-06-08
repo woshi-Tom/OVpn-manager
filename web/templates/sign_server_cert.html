@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>签发服务端证书</h1>
+
+{% if ca_missing %}
+<div class="alert alert-warning">
+    <strong>请先生成CA证书！</strong><br>
+    签发服务端证书前需要先创建CA。
+    <a href="/configs/cert/generate-ca" class="btn btn-primary btn-sm">立即生成CA</a>
+</div>
+{% else %}
+<div class="card">
+    <div class="card-body">
+        <form id="server-cert-form">
+            <div class="mb-3">
+                <label class="form-label">选择 CA 证书</label>
+                <select name="ca_id" class="form-select" required>
+                    <option value="">请选择CA证书</option>
+                    {% for ca in cas %}
+                    <option value="{{ ca.id }}">{{ ca.common_name }} ({{ ca.created_at }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">选择 VPN 配置</label>
+                <select name="config_id" class="form-select" required>
+                    <option value="">请选择配置</option>
+                    {% for config in configs %}
+                    <option value="{{ config.id }}">{{ config.config_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">证书名称 (Common Name)</label>
+                <input type="text" name="common_name" class="form-control" placeholder="如: vpn-server" required>
+                <small class="text-muted">服务端证书的CN</small>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">有效期 (天)</label>
+                <input type="number" name="valid_days" class="form-control" value="365" min="1" max="3650">
+            </div>
+            <button type="submit" class="btn btn-primary">签发证书</button>
+            <a href="/configs" class="btn btn-secondary">返回</a>
+        </form>
+    </div>
+</div>
+
+<script>
+document.getElementById('server-cert-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const formData = new FormData(this);
+    const data = {};
+    
+    for (let [key, value] of formData.entries()) {
+        if (value) data[key] = value;
+    }
+    
+    fetch('/configs/cert/sign-server', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    })
+    .then(res => res.json())
+    .then(resp => {
+        if (resp.status === 'ok') {
+            alert('服务端证书签发成功！');
+            window.location.href = '/configs';
+        } else {
+            alert('签发失败: ' + resp.message);
+        }
+    })
+    .catch(err => alert('请求失败: ' + err));
+});
+</script>
+{% endif %}
+{% endblock %}

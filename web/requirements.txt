@@ -1,0 +1,4 @@
+Flask==3.0.3
+psycopg2-binary==2.9.10
+PyYAML==6.0.2
+requests==2.31.0   # 用于 HTTP 请求（如果未来需要）

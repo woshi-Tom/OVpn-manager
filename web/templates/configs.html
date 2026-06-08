@@ -1,0 +1,365 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-title animate-in">
+    <i class="bi bi-gear"></i>
+    <span>VPN 配置管理</span>
+</div>
+
+<!-- 操作按钮 -->
+<div class="row mb-4 animate-in delay-1">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-body py-3">
+                <div class="d-flex flex-wrap gap-2">
+                    <a href="/configs/add" class="btn btn-primary">
+                        <i class="bi bi-plus-lg me-1"></i> 添加配置
+                    </a>
+                    <a href="/configs/cert/generate-ca" class="btn btn-success">
+                        <i class="bi bi-patch-plus me-1"></i> 生成CA证书
+                    </a>
+                    <a href="/configs/cert/sign-server" class="btn btn-info">
+                        <i class="bi bi-patch-check me-1"></i> 签发服务端证书
+                    </a>
+                    <a href="/configs/cert/ca-list" class="btn btn-warning">
+                        <i class="bi bi-list-ul me-1"></i> CA证书列表
+                    </a>
+                    <button class="btn btn-secondary" onclick="loadCaInfo()">
+                        <i class="bi bi-info-circle me-1"></i> 查看CA信息
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- CA 证书信息 -->
+<div class="row mb-4 animate-in delay-1" id="ca-info-row" style="display: none;">
+    <div class="col-md-12">
+        <div class="card border-info">
+            <div class="card-header bg-info bg-opacity-10 text-info">
+                <i class="bi bi-patch-check"></i> CA 证书信息
+            </div>
+            <div class="card-body" id="ca-info-content"></div>
+        </div>
+    </div>
+</div>
+
+<!-- TUN 模式配置 -->
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card animate-in delay-2">
+            <div class="card-header">
+                <div class="d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-diagram-3"></i> TUN 模式配置 <span class="badge bg-primary ms-2">{{ configs|length }}</span></span>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0 text-center" style="table-layout: fixed; word-wrap: break-word; width: 100%;">
+                            <colgroup>
+                                <col style="width: 5%;">
+                                <col style="width: 12%;">
+                                <col style="width: 6%;">
+                                <col style="width: 6%;">
+                                <col style="width: 6%;">
+                                <col style="width: 15%;">
+                                <col style="width: 16%;">
+                                <col style="width: 10%;">
+                                <col style="width: 8%;">
+                                <col style="width: 16%;">
+                            </colgroup>
+                        <thead>
+                            <tr>
+                                <th><i class="bi bi-hash"></i> ID</th>
+                                <th><i class="bi bi-tag"></i> 名称</th>
+                                <th><i class="bi bi-layers"></i> 模式</th>
+                                <th><i class="bi bi-wifi"></i> 协议</th>
+                                <th><i class="bi bi-plug"></i> 端口</th>
+                                <th><i class="bi bi-globe"></i> 服务器</th>
+                                <th><i class="bi bi-hdd"></i> 虚拟网段</th>
+                                <th><i class="bi bi-patch-check"></i> 证书</th>
+                                <th><i class="bi bi-power"></i> 状态</th>
+                                <th><i class="bi bi-sliders"></i> 操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for config in configs %}
+                            <tr>
+                                <td><code class="text-muted">{{ config.id }}</code></td>
+                                <td><strong>{{ config.config_name }}</strong></td>
+                                <td><span class="badge bg-dark">{{ config.mode|upper }}</span></td>
+                                <td><code>{{ config.proto }}</code></td>
+                                <td><span class="badge bg-primary bg-opacity-10 text-primary">{{ config.port }}</span></td>
+                                <td><code>{{ config.remote }}</code></td>
+                                <td>
+                                    {% if config.server_ip %}
+                                        <code>{{ config.server_ip }}/{{ config.subnet_mask_text }}</code>
+                                    {% else %}
+                                        <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if config.ca_cert and config.server_cert %}
+                                        <span class="badge badge-running"><i class="bi bi-check-circle me-1"></i>已配置</span>
+                                    {% else %}
+                                        <span class="badge bg-warning bg-opacity-10 text-warning"><i class="bi bi-exclamation-circle me-1"></i>未配置</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if config.config_status == 'running' %}
+                                        <span class="badge badge-running"><i class="bi bi-play-circle me-1"></i>运行中</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary bg-opacity-10 text-secondary"><i class="bi bi-stop-circle me-1"></i>已停止</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-success btn-apply" data-id="{{ config.id }}" title="应用配置">
+                                            <i class="bi bi-play-fill"></i>
+                                        </button>
+                                        <button class="btn btn-outline-warning btn-stop" data-id="{{ config.id }}" title="停止">
+                                            <i class="bi bi-stop-fill"></i>
+                                        </button>
+                                        <a href="/configs/{{ config.id }}/edit" class="btn btn-outline-primary" title="编辑">
+                                            <i class="bi bi-pencil"></i>
+                                        </a>
+                                        <button class="btn btn-outline-danger btn-delete" data-id="{{ config.id }}" title="删除">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="10" class="text-center py-5 text-muted">
+                                    <i class="bi bi-inbox" style="font-size: 3rem;"></i>
+                                    <p class="mt-2">暂无 TUN 配置</p>
+                                    <a href="/configs/add" class="btn btn-primary btn-sm">
+                                        <i class="bi bi-plus-lg me-1"></i> 添加第一个配置
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- TAP 模式配置 -->
+<div class="row">
+    <div class="col-md-12">
+        <div class="card animate-in delay-3">
+            <div class="card-header">
+                <div class="d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-diagram-3-fill"></i> TAP 模式配置 <span class="badge bg-secondary ms-2">{{ tap_configs|length }}</span></span>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0 text-center" style="table-layout: fixed; word-wrap: break-word; width: 100%;">
+                            <colgroup>
+                                <col style="width: 5%;">
+                                <col style="width: 12%;">
+                                <col style="width: 6%;">
+                                <col style="width: 6%;">
+                                <col style="width: 6%;">
+                                <col style="width: 15%;">
+                                <col style="width: 16%;">
+                                <col style="width: 10%;">
+                                <col style="width: 8%;">
+                                <col style="width: 16%;">
+                            </colgroup>
+                        <thead>
+                            <tr>
+                                <th><i class="bi bi-hash"></i> ID</th>
+                                <th><i class="bi bi-tag"></i> 名称</th>
+                                <th><i class="bi bi-layers"></i> 模式</th>
+                                <th><i class="bi bi-wifi"></i> 协议</th>
+                                <th><i class="bi bi-plug"></i> 端口</th>
+                                <th><i class="bi bi-globe"></i> 服务器</th>
+                                <th><i class="bi bi-diagram-3"></i> 虚拟网段</th>
+                                <th><i class="bi bi-patch-check"></i> 证书</th>
+                                <th><i class="bi bi-power"></i> 状态</th>
+                                <th><i class="bi bi-sliders"></i> 操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for config in tap_configs %}
+                            <tr>
+                                <td><code class="text-muted">{{ config.id }}</code></td>
+                                <td><strong>{{ config.config_name }}</strong></td>
+                                <td><span class="badge bg-dark">{{ config.mode|upper }}</span></td>
+                                <td><code>{{ config.proto }}</code></td>
+                                <td><span class="badge bg-primary bg-opacity-10 text-primary">{{ config.port }}</span></td>
+                                <td><code>{{ config.remote }}</code></td>
+                                <td>
+                                    {% if config.bridge_name %}
+                                        <code><i class="bi bi-bridge me-1"></i>{{ config.bridge_name }}</code>
+                                    {% elif config.server_ip %}
+                                        <code>{{ config.server_ip }}/{{ config.subnet_mask_text }}</code>
+                                    {% else %}
+                                        <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if config.ca_cert and config.server_cert %}
+                                        <span class="badge badge-running"><i class="bi bi-check-circle me-1"></i>已配置</span>
+                                    {% else %}
+                                        <span class="badge bg-warning bg-opacity-10 text-warning"><i class="bi bi-exclamation-circle me-1"></i>未配置</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if config.config_status == 'running' %}
+                                        <span class="badge badge-running"><i class="bi bi-play-circle me-1"></i>运行中</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary bg-opacity-10 text-secondary"><i class="bi bi-stop-circle me-1"></i>已停止</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-success btn-apply" data-id="{{ config.id }}" title="应用配置">
+                                            <i class="bi bi-play-fill"></i>
+                                        </button>
+                                        <button class="btn btn-outline-warning btn-stop" data-id="{{ config.id }}" title="停止">
+                                            <i class="bi bi-stop-fill"></i>
+                                        </button>
+                                        <a href="/configs/{{ config.id }}/edit" class="btn btn-outline-primary" title="编辑">
+                                            <i class="bi bi-pencil"></i>
+                                        </a>
+                                        <button class="btn btn-outline-danger btn-delete" data-id="{{ config.id }}" title="删除">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="10" class="text-center py-5 text-muted">
+                                    <i class="bi bi-inbox" style="font-size: 3rem;"></i>
+                                    <p class="mt-2">暂无 TAP 配置</p>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function loadCaInfo() {
+    fetch('/configs/cert/ca-info')
+        .then(res => res.json())
+        .then(data => {
+            const row = document.getElementById('ca-info-row');
+            const content = document.getElementById('ca-info-content');
+            
+            if (data.status === 'ok') {
+                const info = data.data;
+                content.innerHTML = `
+                    <div class="row">
+                        <div class="col-md-4">
+                            <p class="mb-1"><strong><i class="bi bi-tag me-2"></i>名称:</strong> ${info.common_name}</p>
+                        </div>
+                        <div class="col-md-4">
+                            <p class="mb-1"><strong><i class="bi bi-calendar me-2"></i>创建时间:</strong> ${info.created_at}</p>
+                        </div>
+                        <div class="col-md-4">
+                            <p class="mb-1"><strong><i class="bi bi-calendar-check me-2"></i>过期时间:</strong> ${info.expires_at}</p>
+                        </div>
+                    </div>
+                `;
+            } else {
+                content.innerHTML = '<div class="alert alert-warning mb-0"><i class="bi bi-exclamation-triangle me-2"></i>未找到CA证书，请先生成CA证书</div>';
+            }
+            
+            row.style.display = 'block';
+        })
+        .catch(err => alert('获取失败: ' + err));
+}
+
+// 应用配置
+document.querySelectorAll('.btn-apply').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const id = this.dataset.id;
+        if (!confirm('确定要应用此VPN配置吗？')) return;
+        
+        this.disabled = true;
+        this.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+        
+        fetch(`/configs/${id}/apply`, {method: 'POST'})
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'ok') {
+                    alert('✅ 应用成功');
+                    location.reload();
+                } else {
+                    alert('❌ 应用失败: ' + data.message);
+                    location.reload();
+                }
+            })
+            .catch(err => {
+                alert('❌ 请求失败: ' + err);
+                location.reload();
+            });
+    });
+});
+
+// 停止配置
+document.querySelectorAll('.btn-stop').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const id = this.dataset.id;
+        
+        this.disabled = true;
+        this.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+        
+        fetch(`/configs/${id}/stop`, {method: 'POST'})
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'ok') {
+                    alert('✅ 停止成功');
+                    location.reload();
+                } else {
+                    alert('❌ 停止失败: ' + data.message);
+                    location.reload();
+                }
+            })
+            .catch(err => {
+                alert('❌ 请求失败: ' + err);
+                location.reload();
+            });
+    });
+});
+
+// 删除配置
+document.querySelectorAll('.btn-delete').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const id = this.dataset.id;
+        if (!confirm('⚠️ 确定要删除此配置吗？此操作不可恢复！')) return;
+        
+        this.disabled = true;
+        
+        fetch(`/configs/${id}/delete`, {method: 'POST'})
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'ok') {
+                    alert('✅ 删除成功');
+                    location.reload();
+                } else {
+                    alert('❌ 删除失败: ' + data.message);
+                    location.reload();
+                }
+            })
+            .catch(err => {
+                alert('❌ 请求失败: ' + err);
+                location.reload();
+            });
+    });
+});
+</script>
+{% endblock %}

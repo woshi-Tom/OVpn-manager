@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 animate-in">
+    <div class="page-title mb-0">
+        <i class="bi bi-person-plus"></i>
+        <span>添加客户端</span>
+    </div>
+    <a href="/clients" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left me-1"></i> 返回列表
+    </a>
+</div>
+
+<div class="card animate-in delay-1">
+    <div class="card-body">
+        <form id="add-client-form">
+            <div class="form-section">
+                <h3><i class="bi bi-person me-2"></i>基本信息</h3>
+                
+                <div class="form-group">
+                    <label class="form-label">
+                        <i class="bi bi-asterisk text-danger me-1"></i>用户名
+                    </label>
+                    <input type="text" class="form-control" name="username" required placeholder="用于OpenVPN认证">
+                    <div class="form-text">用于OpenVPN认证，必填</div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">客户端名称</label>
+                    <input type="text" class="form-control" name="client_name" placeholder="如：用户A的iPhone">
+                    <div class="form-text">用于管理界面识别，可不填</div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">邮箱</label>
+                    <input type="email" class="form-control" name="email" placeholder="example@mail.com">
+                </div>
+            </div>
+
+            <div class="form-section">
+                <h3><i class="bi bi-gear me-2"></i>网络配置</h3>
+                
+                <div class="form-group">
+                    <label class="form-label">
+                        <i class="bi bi-diagram-3 text-danger me-1"></i>关联配置
+                    </label>
+                    <select class="form-select" name="config_id" required>
+                        <option value="">请选择VPN配置</option>
+                        {% for cfg in configs %}
+                        <option value="{{ cfg.id }}">{{ cfg.config_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">静态IP分配（可选）</label>
+                    <input type="text" class="form-control" name="assigned_ip" placeholder="如 10.8.0.10">
+                    <div class="form-text">留空则动态分配IP地址</div>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <h3><i class="bi bi-patch-check me-2"></i>证书配置</h3>
+                
+                <div class="form-group">
+                    <label class="form-label">证书通用名称（CN）</label>
+                    <input type="text" class="form-control" name="cert_cn" placeholder="留空则使用用户名">
+                    <div class="form-text">证书中的 Common Name，用于识别客户端</div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">
+                        <i class="bi bi-calendar-check text-danger me-1"></i>证书有效期
+                    </label>
+                    <div class="input-group">
+                        <input type="number" class="form-control" name="valid_days" value="365" min="1" max="3650">
+                        <span class="input-group-text">天</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-check-lg me-1"></i> 创建客户端
+                </button>
+                <a href="/clients" class="btn btn-outline-secondary">
+                    <i class="bi bi-x-lg me-1"></i> 取消
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+document.getElementById('add-client-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const formData = new FormData(this);
+    const data = Object.fromEntries(formData);
+    
+    fetch('/clients/add', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    })
+    .then(res => res.json())
+    .then(resp => {
+        if (resp.status === 'ok') {
+            if (resp.profile_id) {
+                if (confirm('✅ 客户端创建成功！是否现在下载配置文件？')) {
+                    window.location.href = `/clients/${resp.profile_id}/download-config`;
+                } else {
+                    window.location.href = '/clients';
+                }
+            } else {
+                window.location.href = '/clients';
+            }
+        } else {
+            alert('❌ 创建失败: ' + resp.message);
+        }
+    })
+    .catch(err => alert('❌ 请求失败: ' + err));
+});
+</script>
+{% endblock %}

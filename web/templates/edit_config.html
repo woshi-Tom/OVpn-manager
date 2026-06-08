@@ -1,0 +1,306 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 animate-in">
+    <div class="page-title mb-0">
+        <i class="bi bi-pencil"></i>
+        <span>编辑VPN配置</span>
+    </div>
+    <a href="/configs" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left me-1"></i> 返回列表
+    </a>
+</div>
+
+<div class="card animate-in delay-1">
+    <div class="card-body">
+        <form id="config-form">
+            <input type="hidden" name="mode" value="{{ config.mode }}">
+            <input type="hidden" name="config_id" value="{{ config.id }}">
+            
+            <!-- 基本配置 -->
+            <div class="form-section">
+                <h3><i class="bi bi-sliders me-2"></i>基本配置</h3>
+                
+                <div class="form-group">
+                    <label class="form-label">
+                        <i class="bi bi-tag text-danger me-1"></i>配置名称
+                    </label>
+                    <input type="text" class="form-control" name="config_name" value="{{ config.config_name }}" required placeholder="如：办公网络VPN">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">模式</label>
+                    <div class="form-control-plaintext">
+                        <span class="badge bg-primary">{{ config.mode|upper }}</span>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label class="form-label">
+                                <i class="bi bi-wifi text-danger me-1"></i>协议
+                            </label>
+                            <select class="form-select" name="proto">
+                                <option value="udp" {% if config.proto == 'udp' %}selected{% endif %}>UDP</option>
+                                <option value="tcp" {% if config.proto == 'tcp' %}selected{% endif %}>TCP</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label class="form-label">
+                                <i class="bi bi-hdd-stack text-danger me-1"></i>端口
+                            </label>
+                            <div class="input-group has-validation">
+                                <input type="number" class="form-control" name="port" id="port-input" value="{{ config.port }}" min="1" max="65535" required>
+                            </div>
+                            <div class="form-text" id="port-hint"><i class="bi bi-info-circle me-1"></i>当前可用</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">
+                        <i class="bi bi-globe text-danger me-1"></i>服务器地址
+                    </label>
+                    <input type="text" class="form-control" name="remote" value="{{ config.remote }}" required placeholder="如 vpn.example.com">
+                </div>
+            </div>
+
+            <!-- TUN模式配置 -->
+            {% if config.mode == 'tun' %}
+            <div class="form-section" id="tun-fields">
+                <h3><i class="bi bi-network me-2"></i>TUN模式配置</h3>
+                
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label class="form-label">
+                                <i class="bi bi-pc-horizontal text-danger me-1"></i>服务器IP
+                            </label>
+                            <input type="text" class="form-control" name="server_ip" value="{{ config.server_ip or '' }}" placeholder="如 10.8.0.0">
+                            <div class="form-text">VPN分配的网关地址</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label class="form-label">
+                                <i class="bi bi-grid text-danger me-1"></i>子网掩码
+                            </label>
+                            <input type="text" class="form-control" name="subnet_mask" value="{{ config.subnet_mask or '' }}" placeholder="如 10.8.0.0/24">
+                            <div class="form-text">CIDR格式或点分十进制</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">
+                        <i class="bi bi-dns me-1"></i>推送DNS
+                    </label>
+                    <input type="text" class="form-control" name="push_dns" value="{{ config.push_dns or '' }}" placeholder="多个用逗号分隔，如 8.8.8.8,8.8.4.4">
+                    <div class="form-text">客户端连接后使用的DNS服务器</div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" name="enable_nat" id="enable_nat" {% if config.enable_nat %}checked{% endif %}>
+                                <label class="form-check-label" for="enable_nat">
+                                    <i class="bi bi-shield-check me-1"></i>启用NAT
+                                </label>
+                            </div>
+                            <div class="form-text">启用网络地址转换</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" name="push_redirect_gateway" id="push_redirect_gateway" {% if config.push_redirect_gateway %}checked{% endif %}>
+                                <label class="form-check-label" for="push_redirect_gateway">
+                                    <i class="bi bi-sign-turn-right me-1"></i>推送默认网关
+                                </label>
+                            </div>
+                            <div class="form-text">所有流量通过VPN隧道</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">
+                        <i class="bi bi-signpost-2 me-1"></i>推送路由
+                    </label>
+                    <input type="text" class="form-control" name="push_routes" value="{{ config.push_routes or '' }}" placeholder="多个用逗号分隔，如 192.168.1.0/24,10.0.0.0/16">
+                    <div class="form-text">推送到客户端的额外路由</div>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- TAP模式配置 config.mode == ' -->
+            {% if config.mode == 'tap' %}
+            <div class="form-section" id="tap-fields">
+                <h3><i class="bi bi-lan me-2"></i>TAP模式配置</h3>
+                
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label class="form-label">
+                                <i class="bi bi-bridge me-1"></i>网桥名称
+                            </label>
+                            <input type="text" class="form-control" name="bridge_name" value="{{ config.bridge_name or '' }}" placeholder="如 vpnbr0">
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label class="form-label">
+                                <i class="bi bi-ethernet me-1"></i>物理网卡
+                            </label>
+                            <input type="text" class="form-control" name="physical_if" value="{{ config.physical_if or '' }}" placeholder="如 eth0">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">
+                        <i class="bi bi-router me-1"></i>DHCP模式
+                    </label>
+                    <select class="form-select" name="dhcp_mode">
+                        <option value="none" {% if config.dhcp_mode == 'none' %}selected{% endif %}>无 (静态IP)</option>
+                        <option value="server" {% if config.dhcp_mode == 'server' %}selected{% endif %}>OpenVPN内置DHCP服务器</option>
+                        <option value="relay" {% if config.dhcp_mode == 'relay' %}selected{% endif %}>中继模式</option>
+                    </select>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label class="form-label">TAP接口IP</label>
+                            <input type="text" class="form-control" name="server_ip" value="{{ config.server_ip or '' }}" placeholder="如 192.168.10.1">
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label class="form-label">TAP子网掩码</label>
+                            <input type="text" class="form-control" name="subnet_mask" value="{{ config.subnet_mask or '' }}" placeholder="如 255.255.255.0">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- 按钮组 -->
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-check-lg me-1"></i> 保存配置
+                </button>
+                <a href="/configs" class="btn btn-outline-secondary">
+                    <i class="bi bi-x-lg me-1"></i> 取消
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+// 端口验证状态
+let portValidated = true;  // 编辑时默认已验证
+let portCheckTimeout = null;
+const configId = {{ config.id }};
+
+// 端口验证函数
+async function checkPortAvailability(port, proto) {
+    const portInput = document.getElementById('port-input');
+    const portHint = document.getElementById('port-hint');
+    
+    if (!port || port < 1 || port > 65535) {
+        portInput.classList.remove('is-valid', 'is-invalid');
+        portHint.innerHTML = '<i class="bi bi-info-circle me-1"></i>端口范围: 1-65535';
+        portValidated = false;
+        return false;
+    }
+    
+    portHint.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>正在检查...';
+    
+    try {
+        const res = await fetch('/configs/check-port', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({port: port, proto: proto, exclude_id: configId})
+        });
+        const data = await res.json();
+        
+        if (data.available) {
+            portInput.classList.remove('is-invalid');
+            portInput.classList.add('is-valid');
+            portHint.innerHTML = '<i class="bi bi-check-circle text-success me-1"></i>' + data.message;
+            portValidated = true;
+            return true;
+        } else {
+            portInput.classList.remove('is-valid');
+            portInput.classList.add('is-invalid');
+            portHint.innerHTML = '<i class="bi bi-exclamation-circle text-danger me-1"></i>' + data.message;
+            portValidated = false;
+            return false;
+        }
+    } catch (err) {
+        portHint.innerHTML = '<i class="bi bi-exclamation-triangle text-warning me-1"></i>验证失败，将继续提交';
+        portValidated = true;  // 验证失败时允许提交
+        return true;
+    }
+}
+
+// 端口输入框变化时防抖验证
+document.getElementById('port-input').addEventListener('input', function() {
+    clearTimeout(portCheckTimeout);
+    const port = this.value;
+    const proto = document.querySelector('select[name="proto"]').value;
+    
+    portCheckTimeout = setTimeout(() => {
+        checkPortAvailability(port, proto);
+    }, 500);
+});
+
+// 协议变化时重新验证端口
+document.querySelector('select[name="proto"]').addEventListener('change', function() {
+    const port = document.getElementById('port-input').value;
+    if (port) checkPortAvailability(port, this.value);
+});
+
+// 表单提交
+document.getElementById('config-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    // 先验证端口
+    const port = document.querySelector('input[name="port"]').value;
+    const proto = document.querySelector('select[name="proto"]').value;
+    const isPortValid = await checkPortAvailability(port, proto);
+    
+    if (!isPortValid) {
+        alert('❌ 端口已被占用，请更换端口后重试');
+        return;
+    }
+    
+    const formData = new FormData(this);
+    const data = Object.fromEntries(formData);
+    
+    data.enable_nat = data.enable_nat === 'on';
+    data.push_redirect_gateway = data.push_redirect_gateway === 'on';
+    
+    fetch('/configs/{{ config.id }}/edit', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    })
+    .then(res => res.json())
+    .then(resp => {
+        if (resp.status === 'ok') {
+            alert('✅ 配置更新成功');
+            window.location.href = '/configs';
+        } else {
+            alert('❌ 更新失败: ' + resp.message);
+        }
+    })
+    .catch(err => alert('❌ 请求失败: ' + err));
+});
+</script>
+{% endblock %}

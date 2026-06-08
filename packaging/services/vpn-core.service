@@ -1,0 +1,17 @@
+[Unit]
+Description=VPN Manager Core Service
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/vpn-core
+Restart=always
+RestartSec=5
+User=root
+WorkingDirectory=/etc/vpn-manager
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

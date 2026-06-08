@@ -1,0 +1,402 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 animate-in">
+    <div class="page-title mb-0">
+        <i class="bi bi-gear"></i>
+        <span>添加VPN配置</span>
+    </div>
+    <a href="/configs" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left me-1"></i> 返回列表
+    </a>
+</div>
+
+<div class="card animate-in delay-1">
+    <div class="card-body">
+        <form id="config-form">
+            <!-- 基本配置 -->
+            <div class="form-section">
+                <h3><i class="bi bi-sliders me-2"></i>基本配置</h3>
+                
+                <div class="form-group">
+                    <label class="form-label">
+                        <i class="bi bi-tag text-danger me-1"></i>配置名称
+                    </label>
+                    <input type="text" class="form-control" name="config_name" required placeholder="如：办公网络VPN">
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="form-group">
+                            <label class="form-label">
+                                <i class="bi bi-diagram-3 text-danger me-1"></i>模式
+                            </label>
+                            <select class="form-select" name="mode" id="mode-select" required onchange="toggleModeFields()">
+                                <option value="tun">TUN (路由模式)</option>
+                                <option value="tap">TAP (桥接模式)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-group">
+                            <label class="form-label">
+                                <i class="bi bi-wifi text-danger me-1"></i>协议
+                            </label>
+                            <select class="form-select" name="proto">
+                                <option value="udp">UDP</option>
+                                <option value="tcp">TCP</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-group">
+                            <label class="form-label">
+<i class="bi bi-hdd-stack text-danger me-1"></i>端口
+                            </label>
+                            <div class="input-group has-validation">
+                                <input type="number" class="form-control" name="port" id="port-input" value="1194" min="1" max="65535" required>
+                                <div class="invalid-feedback" id="port-feedback"></div>
+                            </div>
+                            <div class="form-text" id="port-hint"><i class="bi bi-info-circle me-1"></i>当前可用</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-12">
+                        <div class="form-group mb-0">
+                            <label class="form-label">
+                                <i class="bi bi-globe text-danger me-1"></i>服务器地址
+                            </label>
+                            <input type="text" class="form-control" name="remote" placeholder="如 vpn.example.com 或 192.168.1.100" required>
+                        </div>
+                    </div>
+                </div>
+            </div>  <!-- 关闭基本配置 form-section -->
+            <!-- TUN模式配置 -->
+            <div class="form-section" id="tun-fields">
+                <h3><i class="bi bi-network me-2"></i>TUN模式配置</h3>
+                
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label class="form-label">
+                                <i class="bi bi-pc-horizontal text-danger me-1"></i>服务器IP
+                            </label>
+                            <input type="text" class="form-control" name="server_ip" id="server_ip" placeholder="如 10.8.0.0">
+                            <div class="form-text">VPN分配的网关地址</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label class="form-label">
+                                <i class="bi bi-grid text-danger me-1"></i>子网掩码
+                            </label>
+                            <input type="text" class="form-control" name="subnet_mask" id="subnet_mask" placeholder="如 255.255.255.0">
+                            <div class="form-text">CIDR格式或点分十进制</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">
+                        <i class="bi bi-dns me-1"></i>推送DNS
+                    </label>
+                    <input type="text" class="form-control" name="push_dns" placeholder="多个用逗号分隔，如 8.8.8.8,8.8.4.4">
+                    <div class="form-text">客户端连接后使用的DNS服务器</div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" name="enable_nat" id="enable_nat" checked>
+                                <label class="form-check-label" for="enable_nat">
+                                    <i class="bi bi-shield-check me-1"></i>启用NAT
+                                </label>
+                            </div>
+                            <div class="form-text">启用网络地址转换</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" name="push_redirect_gateway" id="push_redirect_gateway">
+                                <label class="form-check-label" for="push_redirect_gateway">
+                                    <i class="bi bi-sign-turn-right me-1"></i>推送默认网关
+                                </label>
+                            </div>
+                            <div class="form-text">所有流量通过VPN隧道</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">
+                        <i class="bi bi-signpost-2 me-1"></i>推送路由
+                    </label>
+                    <input type="text" class="form-control" name="push_routes" placeholder="多个用逗号分隔，如 192.168.1.0/24,10.0.0.0/16">
+                    <div class="form-text">推送到客户端的额外路由</div>
+                </div>
+            </div>
+
+            <!-- TAP模式配置 -->
+            <div class="form-section" id="tap-fields" style="display:none;">
+                <h3><i class="bi bi-lan me-2"></i>TAP模式配置</h3>
+                
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label class="form-label">
+                                <i class="bi bi-bridge me-1"></i>网桥名称
+                            </label>
+                            <input type="text" class="form-control" name="bridge_name" placeholder="如 vpnbr0">
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label class="form-label">
+                                <i class="bi bi-ethernet me-1"></i>物理网卡
+                            </label>
+                            <input type="text" class="form-control" name="physical_if" placeholder="如 eth0">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">
+                        <i class="bi bi-router me-1"></i>DHCP模式
+                    </label>
+                    <select class="form-select" name="dhcp_mode">
+                        <option value="none">无 (静态IP)</option>
+                        <option value="server">OpenVPN内置DHCP服务器</option>
+                        <option value="relay">中继模式</option>
+                    </select>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label class="form-label">TAP接口IP</label>
+                            <input type="text" class="form-control" name="tap_server_ip" id="tap_server_ip" placeholder="如 192.168.10.1">
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label class="form-label">TAP子网掩码</label>
+                            <input type="text" class="form-control" name="tap_subnet_mask" id="tap_subnet_mask" placeholder="如 255.255.255.0">
+                        </div>
+                    </div>
+</div>
+            </div>
+
+            <!-- 证书配置 -->
+            <div class="form-section">
+                <h3><i class="bi bi-patch-check me-2"></i>证书配置 <span class="text-muted fs-6">(可选)</span></h3>
+                
+                <div class="alert alert-info d-flex align-items-center mb-3">
+                    <i class="bi bi-info-circle-fill me-2"></i>
+                    <div>证书可以稍后生成：先生成CA证书 → 再签发服务端证书</div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">CA证书 (PEM)</label>
+                    <textarea class="form-control" name="ca_cert" rows="3" placeholder="-----BEGIN CERTIFICATE-----"></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">服务端证书 (PEM)</label>
+                    <textarea class="form-control" name="server_cert" rows="3" placeholder="-----BEGIN CERTIFICATE-----"></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">服务端私钥 (PEM)</label>
+                    <textarea class="form-control" name="server_key" rows="3" placeholder="-----BEGIN PRIVATE KEY-----"></textarea>
+                </div>
+            </div>
+
+            <!-- 按钮组 -->
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-check-lg me-1"></i> 创建配置
+                </button>
+                <a href="/configs" class="btn btn-outline-secondary">
+                    <i class="bi bi-x-lg me-1"></i> 取消
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+<script>
+function toggleModeFields() {
+    const mode = document.getElementById('mode-select').value;
+    const tunFields = document.getElementById('tun-fields');
+    const tapFields = document.getElementById('tap-fields');
+    
+    // 互斥显示
+    if (mode === 'tun') {
+        tunFields.style.display = 'block';
+        tapFields.style.display = 'none';
+    } else {
+        tunFields.style.display = 'none';
+        tapFields.style.display = 'block';
+    }
+    
+    // TUN模式：设置必填和启用，TAP模式：禁用
+    const serverIp = document.getElementById('server_ip');
+    const subnetMask = document.getElementById('subnet_mask');
+    const tapServerIp = document.getElementById('tap_server_ip');
+    const tapSubnetMask = document.getElementById('tap_subnet_mask');
+    
+    if (mode === 'tun') {
+        if (serverIp) { serverIp.disabled = false; serverIp.setAttribute('required', 'required'); }
+        if (subnetMask) { subnetMask.disabled = false; subnetMask.setAttribute('required', 'required'); }
+        if (tapServerIp) tapServerIp.disabled = true;
+        if (tapSubnetMask) tapSubnetMask.disabled = true;
+    } else {
+        if (serverIp) { serverIp.disabled = true; serverIp.removeAttribute('required'); }
+        if (subnetMask) { subnetMask.disabled = true; subnetMask.removeAttribute('required'); }
+        if (tapServerIp) tapServerIp.disabled = false;
+        if (tapSubnetMask) tapSubnetMask.disabled = false;
+    }
+}
+
+// 端口验证状态
+let portValidated = false;
+let portCheckTimeout = null;
+
+// 端口验证函数
+async function checkPortAvailability(port, proto) {
+    const portInput = document.getElementById('port-input');
+    const portHint = document.getElementById('port-hint');
+    
+    if (!port || port < 1 || port > 65535) {
+        portInput.classList.remove('is-valid', 'is-invalid');
+        portHint.innerHTML = '<i class="bi bi-info-circle me-1"></i>端口范围: 1-65535';
+        portValidated = false;
+        return false;
+    }
+    
+    portHint.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>正在检查...';
+    
+       try {
+        const res = await fetch('/configs/check-port', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({port: port, proto: proto})
+        });
+        const data = await res.json();
+        
+        if (data.available) {
+            portInput.classList.remove('is-invalid');
+            portInput.classList.add('is-valid');
+            portHint.innerHTML = '<i class="bi bi-check-circle text-success me-1"></i>' + data.message;
+            portValidated = true;
+            return true;
+        } else {
+            portInput.classList.remove('is-valid');
+            portInput.classList.add('is-invalid');
+            portHint.innerHTML = '<i class="bi bi-exclamation-circle text-danger me-1"></i>' + data.message;
+            portValidated = false;
+            return false;
+        }
+    } catch (err) {
+        portHint.innerHTML = '<i class="bi bi-exclamation-triangle text-warning me-1"></i>验证失败，将继续提交';
+        portValidated = false;
+        return true;
+    }
+}
+
+// 页面加载后初始化
+document.addEventListener('DOMContentLoaded', function() {
+// 初始化模式显示
+    toggleModeFields();
+    
+    // 页面加载时自动检测端口
+    const initPort = document.getElementById('port-input').value;
+    const initProto = document.querySelector('select[name="proto"]').value;
+if (initPort) { checkPortAvailability(initPort, initProto); }
+    
+    // 端口输入框变化时防抖验证
+    const portInput = document.getElementById('port-input');
+    if (portInput) {
+        portInput.addEventListener('input', function() {
+            clearTimeout(portCheckTimeout);
+            const port = this.value;
+            const proto = document.querySelector('select[name="proto"]').value;
+            portCheckTimeout = setTimeout(() => { checkPortAvailability(port, proto); }, 500);
+        });
+    }
+    
+    // 表单提交事件
+    const form = document.getElementById('config-form');
+    if (form) {
+        form.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            // 端口验证
+            const port = document.querySelector('input[name="port"]').value;
+            const proto = document.querySelector('select[name="proto"]').value;
+            const isPortValid = await checkPortAvailability(port, proto);
+            if (!isPortValid) {
+                alert('❌ 端口已被占用，请更换端口后重试');
+                return;
+            }
+            
+            // 根据模式获取字段值
+            const mode = document.querySelector('select[name="mode"]').value;
+            let serverIpValue = '';
+            let subnetMaskValue = '';
+            if (mode === 'tun') {
+                serverIpValue = document.querySelector('input[name="server_ip"]').value || '';
+                subnetMaskValue = document.querySelector('input[name="subnet_mask"]').value || '';
+            } else {
+                serverIpValue = document.querySelector('input[name="tap_server_ip"]').value || '';
+                subnetMaskValue = document.querySelector('input[name="tap_subnet_mask"]').value || '';
+            }
+            
+            // TUN模式必填验证
+            if (mode === 'tun' && (!serverIpValue || !subnetMaskValue)) {
+                alert('❌ TUN模式需要填写服务器IP和子网掩码');
+                return;
+            }
+            
+            const data = {
+                config_name: document.querySelector('input[name="config_name"]').value,
+                mode: mode,
+                proto: document.querySelector('select[name="proto"]').value,
+                port: document.querySelector('input[name="port"]').value,
+                remote: document.querySelector('input[name="remote"]').value,
+                server_ip: serverIpValue,
+                subnet_mask: subnetMaskValue,
+                push_dns: document.querySelector('input[name="push_dns"]')?.value || '',
+                enable_nat: document.querySelector('input[name="enable_nat"]')?.checked || false,
+                push_redirect_gateway: document.querySelector('input[name="push_redirect_gateway"]')?.checked || false,
+                push_routes: document.querySelector('input[name="push_routes"]')?.value || '',
+                bridge_name: document.querySelector('input[name="bridge_name"]')?.value || '',
+                physical_if: document.querySelector('input[name="physical_if"]')?.value || '',
+                dhcp_mode: document.querySelector('select[name="dhcp_mode"]')?.value || 'none',
+                ca_cert: document.querySelector('textarea[name="ca_cert"]')?.value || '',
+                server_cert: document.querySelector('textarea[name="server_cert"]')?.value || '',
+                server_key: document.querySelector('textarea[name="server_key"]')?.value || ''
+            };
+            
+            fetch('/configs/add', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            })
+            .then(res => res.json())
+            .then(resp => {
+                if (resp.status === 'ok') {
+                    alert('✅ 配置创建成功');
+                    window.location.href = '/configs';
+                } else {
+                    alert('❌ 创建失败: ' + resp.message);
+                }
+            })
+            .catch(err => alert('❌ 请求失败: ' + err));
+        });
+    }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>下载客户端配置</h1>
+<p>客户端ID: {{ client_id }}</p>
+<p>点击下方按钮直接下载配置文件（私钥已用系统密钥加密）：</p>
+<button id="btn-download" class="btn btn-primary">下载配置文件</button>
+<a href="/clients" class="btn btn-secondary">返回</a>
+
+<script>
+document.getElementById('btn-download').addEventListener('click', function() {
+    fetch(`/clients/{{ client_id }}/get-config`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({})
+    })
+    .then(res => {
+        if (res.headers.get('content-type')?.includes('application/json')) {
+            return res.json().then(data => {
+                alert('下载失败: ' + (data.message || '未知错误'));
+            });
+        } else {
+            return res.blob().then(blob => {
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `client_{{ client_id }}.ovpn`;
+                a.click();
+                window.URL.revokeObjectURL(url);
+            });
+        }
+    })
+    .catch(err => alert('请求失败: ' + err));
+});
+</script>
+{% endblock %}

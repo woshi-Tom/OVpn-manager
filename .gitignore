@@ -1,0 +1,37 @@
+# Python
+venv_*/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Config (contains secrets - use .example files as templates)
+core.yaml
+web.yaml
+
+# Certificates and keys
+*.pem
+*.key
+*.crt
+*.csr
+*.srl
+
+# Logs
+*.log
+nohup.out
+
+# C build artifacts
+master/*.o
+master/vpn_core
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~

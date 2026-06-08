@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-title animate-in">
+    <i class="bi bi-person-check"></i>
+    <span>在线用户</span>
+    <span class="badge bg-success ms-2" style="font-size: 0.7rem; vertical-align: middle;" id="online-count">0</span>
+</div>
+
+<div class="card animate-in delay-1">
+    <div class="card-header">
+        <div class="d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-people"></i> 当前在线: <strong id="online-count-header">0</strong> 人</span>
+            <div>
+                <button onclick="refreshSessions()" class="btn btn-sm btn-outline-primary">
+                    <i class="bi bi-arrow-clockwise me-1"></i> 刷新
+                </button>
+                <label class="ms-2">
+                    <input type="checkbox" id="autoRefresh" checked> 自动刷新
+                </label>
+            </div>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0" id="sessions-table">
+                <thead>
+                    <tr>
+                        <th><i class="bi bi-person"></i> 用户名</th>
+                        <th><i class="bi bi-tag"></i> 客户端名称</th>
+                        <th><i class="bi bi-gear"></i> VPN配置</th>
+                        <th><i class="bi bi-hdd"></i> 虚拟IP</th>
+                        <th><i class="bi bi-globe"></i> 真实IP</th>
+                        <th><i class="bi bi-clock"></i> 连接时间</th>
+                        <th><i class="bi bi-upload"></i> 流量发送</th>
+                        <th><i class="bi bi-download"></i> 流量接收</th>
+                        <th><i class="bi bi-sliders"></i> 操作</th>
+                    </tr>
+                </thead>
+                <tbody id="sessions-tbody">
+                    {% for session in sessions %}
+                    <tr>
+                        <td><strong><i class="bi bi-person text-primary me-1"></i>{{ session.username }}</strong></td>
+                        <td>{{ session.client_name or '-' }}</td>
+                        <td><span class="badge bg-primary bg-opacity-10 text-primary">{{ session.config_name }}</span></td>
+                        <td><code>{{ session.virtual_ip or '-' }}</code></td>
+                        <td><code>{{ session.real_ip }}</code></td>
+                        <td><small class="text-muted">{{ session.connected_since }}</small></td>
+                        <td><span class="text-info"><i class="bi bi-upload"></i> {{ session.bytes_sent }}</span></td>
+                        <td><span class="text-success"><i class="bi bi-download"></i> {{ session.bytes_received }}</span></td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-danger btn-kick" data-username="{{ session.username }}">
+                                <i class="bi bi-x-circle"></i> 踢出
+                            </button>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="9" class="text-center py-5 text-muted">
+                            <i class="bi bi-inbox" style="font-size: 3rem;"></i>
+                            <p class="mt-2">当前没有在线用户</p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+let autoRefresh = true;
+let refreshInterval = null;
+
+function formatBytes(bytes) {
+    if (!bytes) return '0 B';
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+}
+
+function formatTime(timestamp) {
+    if (!timestamp) return '-';
+    const date = new Date(timestamp);
+    return date.toLocaleString('zh-CN');
+}
+
+function refreshSessions() {
+    fetch('/sessions/api/online')
+        .then(res => res.json())
+        .then(resp => {
+            if (resp.status === 'ok') {
+                updateTable(resp.data);
+            }
+        })
+        .catch(err => console.error('获取在线用户失败:', err));
+}
+
+function updateTable(sessions) {
+    document.getElementById('online-count').textContent = sessions.length;
+    document.getElementById('online-count-header').textContent = sessions.length;
+    
+    const tbody = document.getElementById('sessions-tbody');
+    
+    if (sessions.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="9" class="text-center py-5 text-muted">
+                    <i class="bi bi-inbox" style="font-size: 3rem;"></i>
+                    <p class="mt-2">当前没有在线用户</p>
+                </td>
+            </tr>
+        `;
+        return;
+    }
+    
+    tbody.innerHTML = sessions.map(s => `
+        <tr>
+            <td><strong><i class="bi bi-person text-primary me-1"></i>${s.username || '-'}</strong></td>
+            <td>${s.client_name || '-'}</td>
+            <td><span class="badge bg-primary bg-opacity-10 text-primary">${s.config_name || '-'}</span></td>
+            <td><code>${s.virtual_ip || '-'}</code></td>
+            <td><code>${s.real_ip || '-'}</code></td>
+            <td><small class="text-muted">${formatTime(s.connected_since)}</small></td>
+            <td><span class="text-info"><i class="bi bi-upload"></i> ${formatBytes(s.bytes_sent)}</span></td>
+            <td><span class="text-success"><i class="bi bi-download"></i> ${formatBytes(s.bytes_received)}</span></td>
+            <td>
+                <button class="btn btn-sm btn-outline-danger btn-kick" data-username="${s.username}">
+                    <i class="bi bi-x-circle"></i> 踢出
+                </button>
+            </td>
+        </tr>
+    `).join('');
+    
+    // 重新绑定事件
+    document.querySelectorAll('.btn-kick').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const username = this.dataset.username;
+            if (confirm(`确定要踢出用户 ${username} 吗？`)) {
+                kickUser(username);
+            }
+        });
+    });
+}
+
+function kickUser(username) {
+    fetch('/sessions/api/kick', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({username: username})
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === 'ok') {
+            alert('✅ 踢出成功');
+            refreshSessions();
+        } else {
+            alert('❌ 踢出失败: ' + data.message);
+        }
+    })
+    .catch(err => alert('❌ 请求失败: ' + err));
+}
+
+// 自动刷新开关
+document.getElementById('autoRefresh').addEventListener('change', function() {
+    autoRefresh = this.checked;
+    if (autoRefresh) {
+        refreshInterval = setInterval(refreshSessions, 5000);
+    } else {
+        clearInterval(refreshInterval);
+    }
+});
+
+// 初始启动自动刷新
+if (autoRefresh) {
+    refreshInterval = setInterval(refreshSessions, 5000);
+}
+
+// 初始加载
+refreshSessions();
+</script>
+{% endblock %}
