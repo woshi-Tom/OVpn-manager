@@ -210,6 +210,10 @@ database:
 
 encryption_key: "your-random-key"  # 私钥加密密钥（重要！丢失后无法解密证书）
 
+# TCP 监听（K8s 部署时使用，0 = 使用 Unix Socket）
+listen_host: "0.0.0.0"
+listen_port: 9000
+
 log:
   level: info              # 日志级别: debug/info/warn/error
   file: /var/log/vpn-manager/core.log
@@ -226,8 +230,15 @@ flask:
   host: 0.0.0.0
   port: 5000               # Web 界面端口
 
+# 通信方式（二选一）：
+# systemd 部署使用 Unix Socket:
 socket:
-  core_socket: /var/run/vpn-manager/core.sock  # Core 通信 socket
+  core_socket: /var/run/vpn-manager/core.sock
+
+# K8s 部署使用 TCP:
+# socket:
+#   core_host: vpn-server-service
+#   core_port: 9000
 ```
 
 #### 第五步：配置 systemd 服务
@@ -262,6 +273,60 @@ sudo vpn-manager start
 
 # 设置开机自启
 sudo vpn-manager enable
+```
+
+---
+
+### 方式三：k3s 容器化部署（推荐练手 K8s）
+
+适合学习 Kubernetes 部署，Core + OpenVPN 运行在特权容器中，Web 普通容器。
+
+```bash
+# 前提：已安装 k3s 和 docker
+git clone https://github.com/woshi-Tom/OVpn-manager.git
+cd OVpn-manager
+
+# 一键部署
+sudo chmod +x k8s/deploy.sh
+sudo ./k8s/deploy.sh
+```
+
+**部署架构：**
+
+```
+┌─ k3s 集群 ──────────────────────────────────────┐
+│                                                  │
+│  DaemonSet: vpn-server (privileged + hostNetwork)│
+│  ┌──────────────────────────────────────────┐    │
+│  │  Core + OpenVPN (同一容器)               │    │
+│  │  TCP:9000 (IPC)  UDP:1194 (VPN)          │    │
+│  └───────────────┬──────────────────────────┘    │
+│                  │ ClusterIP                      │
+│  ┌───────────────┴──────────────────┐            │
+│  │  Deployment: vpn-web (普通容器)  │            │
+│  │  Flask :5000 (NodePort)          │            │
+│  └──────────────────────────────────┘            │
+│                                                  │
+│  StatefulSet: postgres (PVC 持久化)              │
+└──────────────────────────────────────────────────┘
+```
+
+**管理命令：**
+
+```bash
+# 查看状态
+kubectl -n vpn-manager get pods
+kubectl -n vpn-manager get svc
+
+# 查看日志
+kubectl -n vpn-manager logs -l app=vpn-server -f
+kubectl -n vpn-manager logs -l app=vpn-web -f
+
+# 进入容器调试
+kubectl -n vpn-manager exec -it deploy/vpn-web -- /bin/bash
+
+# 卸载
+kubectl delete namespace vpn-manager
 ```
 
 ---
@@ -330,8 +395,8 @@ OVpn-manager/
 │   ├── main.c                  # 入口点
 │   ├── config.c                # YAML 配置解析
 │   ├── database.c              # PostgreSQL 数据库操作
-│   ├── socket_server.c         # Unix Socket IPC 服务
-│   ├── openvpn.c               # OpenVPN 进程管理
+│   ├── socket_server.c         # Socket IPC 服务（Unix Socket / TCP）
+│   ├── openvpn.c               # OpenVPN 进程管理、配置生成
 │   ├── monitor.c               # 实时会话监控
 │   ├── cert_utils.c            # OpenSSL 证书工具
 │   ├── client_handler.c        # 客户端证书处理
@@ -342,20 +407,33 @@ OVpn-manager/
 ├── web/                        # Web 管理界面（Python/Flask）
 │   ├── app.py                  # Flask 应用入口
 │   ├── config.py               # 配置加载
-│   ├── core_client.py          # Core Socket 客户端
+│   ├── core_client.py          # Core 通信客户端（Unix Socket / TCP）
 │   ├── db.py                   # 数据库连接
 │   ├── routes/                 # 路由处理
 │   │   ├── api.py              # REST API
-│   │   ├── auth.py             # 登录认证
+│   │   ├── auth.py             # 登录认证（支持 bcrypt）
 │   │   ├── clients.py          # 客户端管理
-│   │   ├── configs.py          # 配置管理
+│   │   ├── configs.py          # 配置管理（TUN/TAP）
 │   │   ├── index.py            # 首页仪表盘
 │   │   └── sessions.py         # 会话管理
 │   ├── templates/              # HTML 模板
 │   ├── static/                 # 静态资源
 │   ├── utils/                  # 工具模块
-│   └── requirements.txt        # Python 依赖
-├── packaging/                  # 部署相关
+│   ├── requirements.txt        # Python 依赖
+│   └── run.sh                  # 开发运行脚本
+├── docker/                     # Docker 容器镜像
+│   ├── Dockerfile.server       # Core + OpenVPN 合并镜像
+│   ├── Dockerfile.web          # Web 镜像
+│   └── entrypoint-server.sh    # Server 容器入口脚本
+├── k8s/                        # Kubernetes/k3s 部署清单
+│   ├── deploy.sh               # 一键构建+部署脚本
+│   ├── namespace.yaml          # 命名空间
+│   ├── configmap.yaml          # Core/Web 配置
+│   ├── secret.yaml             # 数据库密码、加密密钥
+│   ├── postgres.yaml           # PostgreSQL StatefulSet + PVC
+│   ├── server.yaml             # Core+OpenVPN DaemonSet（privileged）
+│   └── web.yaml                # Web Deployment + NodePort + Ingress
+├── packaging/                  # systemd 传统部署
 │   ├── scripts/
 │   │   ├── install.sh          # 一键安装脚本
 │   │   ├── uninstall.sh        # 卸载脚本
