@@ -106,8 +106,9 @@ int parse_config(const char *path) {
                                 else if (strcmp(value, "warn") == 0) g_config.log.level_value = 2;
                                 else if (strcmp(value, "error") == 0) g_config.log.level_value = 3;
                                 else g_config.log.level_value = 1;
-                            }
+                            } else if (strcmp(current_key, "file") == 0) {
                                 safe_strcpy(g_config.log.file, value, sizeof(g_config.log.file));
+                            }
                         } else if (in_section == 3) { // openvpn
                             if (strcmp(current_key, "binary") == 0)
                                 safe_strcpy(g_config.openvpn.binary, value, sizeof(g_config.openvpn.binary));

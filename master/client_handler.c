@@ -39,8 +39,8 @@ cJSON* handle_gen_client_cert(const cJSON *params) {
 
     char sql[4096];
     // 先从 vpn_config 获取 ca_cert 和 ca_fingerprint
-    snprintf(sql, sizeof(sql), 
-        "SELECT ca_cert, server_cert, remote, port, ca_fingerprint, proto FROM vpn_config WHERE id = %d", config_id_val);
+    snprintf(sql, sizeof(sql),
+        "SELECT ca_cert, server_cert, remote, port, ca_fingerprint, proto, mode FROM vpn_config WHERE id = %d", config_id_val);
     PGresult *res = PQexec(g_conn, sql);
     if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0) {
         PQclear(res);
@@ -54,6 +54,7 @@ cJSON* handle_gen_client_cert(const cJSON *params) {
     char *remote = strdup(PQgetvalue(res, 0, 2));
     int port = atoi(PQgetvalue(res, 0, 3));
     char *proto = strdup(PQgetvalue(res, 0, 5));
+    char *vpn_mode = strdup(PQgetvalue(res, 0, 6));
     PQclear(res);
     
     log_message(LOG_INFO, "handle_gen_client_cert: step1 ca_cert_len=%zu, ca_fingerprint=%s", 
@@ -67,7 +68,7 @@ cJSON* handle_gen_client_cert(const cJSON *params) {
             config_id_val);
         PGresult *res2 = PQexec(g_conn, sql);
         if (PQresultStatus(res2) != PGRES_TUPLES_OK || PQntuples(res2) == 0) {
-            free(ca_cert_pem); free(ca_fingerprint); free(server_cert); free(remote);
+            free(ca_cert_pem); free(ca_fingerprint); free(server_cert); free(remote); free(vpn_mode); free(proto);
             PQclear(res2);
             return create_error_response("无法获取CA证书");
         }
@@ -112,7 +113,7 @@ cJSON* handle_gen_client_cert(const cJSON *params) {
     X509 *ca_cert = PEM_read_bio_X509(bio, NULL, NULL, NULL);
     BIO_free(bio);
     if (!ca_cert) {
-        free(ca_cert_pem); free(ca_fingerprint); free(server_cert); free(remote); free(encrypted_ca_key);
+        free(ca_cert_pem); free(ca_fingerprint); free(server_cert); free(remote); free(encrypted_ca_key); free(vpn_mode); free(proto);
         return create_error_response("解析CA证书失败");
     }
 
@@ -121,7 +122,7 @@ cJSON* handle_gen_client_cert(const cJSON *params) {
     BIO_free(bio);
     if (!ca_key) {
         X509_free(ca_cert);
-        free(ca_cert_pem); free(ca_fingerprint); free(server_cert); free(remote); free(encrypted_ca_key);
+        free(ca_cert_pem); free(ca_fingerprint); free(server_cert); free(remote); free(encrypted_ca_key); free(vpn_mode); free(proto);
         return create_error_response("密码错误，无法使用CA私钥");
     }
 
@@ -129,7 +130,7 @@ cJSON* handle_gen_client_cert(const cJSON *params) {
     if (!client_key) {
         X509_free(ca_cert);
         EVP_PKEY_free(ca_key);
-        free(ca_cert_pem); free(ca_fingerprint); free(server_cert); free(remote); free(encrypted_ca_key);
+        free(ca_cert_pem); free(ca_fingerprint); free(server_cert); free(remote); free(encrypted_ca_key); free(vpn_mode); free(proto);
         return create_error_response("生成客户端密钥失败");
     }
 
@@ -139,7 +140,7 @@ cJSON* handle_gen_client_cert(const cJSON *params) {
         EVP_PKEY_free(client_key);
         X509_free(ca_cert);
         EVP_PKEY_free(ca_key);
-        free(ca_cert_pem); free(ca_fingerprint); free(server_cert); free(remote); free(encrypted_ca_key);
+        free(ca_cert_pem); free(ca_fingerprint); free(server_cert); free(remote); free(encrypted_ca_key); free(vpn_mode); free(proto);
         return create_error_response("签发客户端证书失败");
     }
 
@@ -152,7 +153,7 @@ cJSON* handle_gen_client_cert(const cJSON *params) {
         EVP_PKEY_free(client_key);
         X509_free(ca_cert);
         EVP_PKEY_free(ca_key);
-        free(ca_cert_pem); free(ca_fingerprint); free(server_cert); free(remote); free(encrypted_ca_key);
+        free(ca_cert_pem); free(ca_fingerprint); free(server_cert); free(remote); free(encrypted_ca_key); free(vpn_mode); free(proto);
         return create_error_response("加密客户端私钥失败");
     }
 
@@ -217,10 +218,12 @@ cJSON* handle_gen_client_cert(const cJSON *params) {
     int profile_id = atoi(PQgetvalue(res4, 0, 0));
     PQclear(res4);
 
+    const char *dev_type = (vpn_mode && strcmp(vpn_mode, "tap") == 0) ? "tap" : "tun";
+
     char *config;
     asprintf(&config,
         "client\n"
-        "dev tun\n"
+        "dev %s\n"
         "proto %s\n"
         "remote %s %d\n"
         "resolv-retry infinite\n"
@@ -234,7 +237,7 @@ cJSON* handle_gen_client_cert(const cJSON *params) {
         "<ca>\n%s\n</ca>\n"
         "<cert>\n%s\n</cert>\n"
         "<key>\n%s\n</key>\n",
-        proto ? proto : "udp", remote, port, ca_cert_pem, client_cert_pem, encrypted_client_key);
+        dev_type, proto ? proto : "udp", remote, port, ca_cert_pem, client_cert_pem, encrypted_client_key);
 
     cJSON *resp = cJSON_CreateObject();
     cJSON_AddStringToObject(resp, "status", "ok");
@@ -254,6 +257,7 @@ cJSON* handle_gen_client_cert(const cJSON *params) {
     X509_free(ca_cert);
     EVP_PKEY_free(ca_key);
     free(proto);
+    free(vpn_mode);
 
     return resp;
 }
@@ -269,7 +273,7 @@ cJSON* handle_get_client_config(const cJSON *params) {
 
     char sql[2048];
     snprintf(sql, sizeof(sql),
-        "SELECT cp.client_cert, cp.client_key, c.ca_cert, c.remote, c.port, c.proto "
+        "SELECT cp.client_cert, cp.client_key, c.ca_cert, c.remote, c.port, c.proto, c.mode "
         "FROM vpn_client_profiles cp JOIN vpn_config c ON cp.config_id = c.id WHERE cp.id = %d", cid);
     PGresult *res = PQexec(g_conn, sql);
     if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0) {
@@ -283,6 +287,8 @@ cJSON* handle_get_client_config(const cJSON *params) {
     const char *remote = PQgetvalue(res, 0, 3);
     int port = atoi(PQgetvalue(res, 0, 4));
     const char *proto = PQgetvalue(res, 0, 5);
+    const char *vpn_mode = PQgetvalue(res, 0, 6);
+    const char *dev_type = (vpn_mode && strcmp(vpn_mode, "tap") == 0) ? "tap" : "tun";
 
     EVP_PKEY *pkey = decrypt_private_key(client_key_encrypted, NULL);
     if (!pkey) {
@@ -296,7 +302,7 @@ cJSON* handle_get_client_config(const cJSON *params) {
     char *config;
     asprintf(&config,
         "client\n"
-        "dev tun\n"
+        "dev %s\n"
         "proto %s\n"
         "remote %s %d\n"
         "resolv-retry infinite\n"
@@ -309,7 +315,7 @@ cJSON* handle_get_client_config(const cJSON *params) {
         "<ca>\n%s\n</ca>\n"
         "<cert>\n%s\n</cert>\n"
         "<key>\n%s\n</key>\n",
-        proto ? proto : "udp", remote, port, ca_cert_pem, client_cert_pem, client_key_pem);
+        dev_type, proto ? proto : "udp", remote, port, ca_cert_pem, client_cert_pem, client_key_pem);
 
     free(client_key_pem);
     cJSON *resp = cJSON_CreateObject();

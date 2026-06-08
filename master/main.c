@@ -8,10 +8,15 @@
 
 #define SCHEMA_PATH "/etc/vpn-manager/schema.sql"
 
+static volatile sig_atomic_t g_shutdown_requested = 0;
+
 void sig_handler(int sig) {
-    log_message(LOG_INFO, "收到信号 %d，正在清理...", sig);
-    monitor_stop_all();
-    exit(0);
+    (void)sig;
+    g_shutdown_requested = 1;
+}
+
+int is_shutdown_requested(void) {
+    return g_shutdown_requested;
 }
 
 
@@ -54,6 +59,9 @@ int main(int argc, char *argv[]) {
 
     start_socket_server();
 
+    log_message(LOG_INFO, "正在清理资源...");
+    monitor_stop_all();
     disconnect_db();
+    log_message(LOG_INFO, "VPN Manager 已停止");
     return 0;
 }

@@ -8,6 +8,7 @@
 #include <sys/wait.h>
 #include <fcntl.h>
 #include <stdint.h>
+#include <arpa/inet.h>
 #include <openssl/dh.h>
 #include <openssl/pem.h>
 
@@ -415,22 +416,74 @@ static void generate_tap_config(FILE *fp, int config_id) {
     fprintf(fp, "dev tap\n");
     fprintf(fp, "cipher AES-256-GCM\n");
 
-    if (bridge_name && strlen(bridge_name) > 0) {
-        fprintf(fp, "dev-node %s\n", bridge_name);
-        ensure_bridge_exists(bridge_name, physical_if);
-    }
+    /* TAP 模式允许多播和广播，客户端可以互相发现 */
+    fprintf(fp, "client-to-client\n");
 
-    if (server_ip && subnet_mask && strlen(server_ip) > 0 && strlen(subnet_mask) > 0) {
-        fprintf(fp, "ifconfig %s %s\n", server_ip, subnet_mask);
+    if (bridge_name && strlen(bridge_name) > 0) {
+        /* 使用 bridge 指令替代 dev-node，OpenVPN 自动管理网桥 */
+        if (physical_if && strlen(physical_if) > 0) {
+            fprintf(fp, "server-bridge %s %s %s %s\n",
+                    server_ip && strlen(server_ip) > 0 ? server_ip : "192.168.10.1",
+                    subnet_mask && strlen(subnet_mask) > 0 ? subnet_mask : "255.255.255.0",
+                    "192.168.10.128", "192.168.10.254");
+            ensure_bridge_exists(bridge_name, physical_if);
+        } else {
+            fprintf(fp, "dev-node %s\n", bridge_name);
+        }
     }
 
     if (dhcp_mode && strcmp(dhcp_mode, "server") == 0) {
         fprintf(fp, "mode server\n");
         fprintf(fp, "tls-server\n");
+        if (server_ip && subnet_mask && strlen(server_ip) > 0 && strlen(subnet_mask) > 0) {
+            /* server-bridge 指令格式: server_ip netmask pool_start pool_end */
+            /* 解析子网以确定地址池范围 */
+            struct in_addr addr;
+            if (inet_aton(server_ip, &addr)) {
+                uint32_t ip = ntohl(addr.s_addr);
+                /* 池范围: server_ip+100 ~ server_ip+200 */
+                uint32_t pool_start = (ip & 0xFFFFFF00) | 100;
+                uint32_t pool_end = (ip & 0xFFFFFF00) | 200;
+                char start_str[32], end_str[32];
+                struct in_addr sa, ea;
+                sa.s_addr = htonl(pool_start);
+                ea.s_addr = htonl(pool_end);
+                snprintf(start_str, sizeof(start_str), "%s", inet_ntoa(sa));
+                snprintf(end_str, sizeof(end_str), "%s", inet_ntoa(ea));
+                fprintf(fp, "server-bridge %s %s %s %s\n",
+                        server_ip, subnet_mask, start_str, end_str);
+            }
+        }
         fprintf(fp, "ifconfig-pool-persist /var/log/openvpn/ipp-%d.txt\n", config_id);
     } else if (dhcp_mode && strcmp(dhcp_mode, "relay") == 0) {
         log_message(LOG_INFO, "TAP 模式中继模式需要额外配置 DHCP 中继服务器");
+        fprintf(fp, "; DHCP relay mode - requires external DHCP relay agent\n");
+        if (server_ip && subnet_mask && strlen(server_ip) > 0 && strlen(subnet_mask) > 0) {
+            fprintf(fp, "ifconfig %s %s\n", server_ip, subnet_mask);
+        }
+    } else {
+        /* none: 静态 IP 模式 */
+        if (server_ip && subnet_mask && strlen(server_ip) > 0 && strlen(subnet_mask) > 0) {
+            fprintf(fp, "ifconfig %s %s\n", server_ip, subnet_mask);
+            /* 计算客户端地址池: 从 server_ip+100 开始 */
+            struct in_addr addr;
+            if (inet_aton(server_ip, &addr)) {
+                uint32_t ip = ntohl(addr.s_addr);
+                uint32_t pool_start = (ip & 0xFFFFFF00) | 100;
+                uint32_t pool_end = (ip & 0xFFFFFF00) | 200;
+                struct in_addr sa, ea;
+                char start_str[32], end_str[32];
+                sa.s_addr = htonl(pool_start);
+                ea.s_addr = htonl(pool_end);
+                snprintf(start_str, sizeof(start_str), "%s", inet_ntoa(sa));
+                snprintf(end_str, sizeof(end_str), "%s", inet_ntoa(ea));
+                fprintf(fp, "ifconfig-pool %s %s\n", start_str, end_str);
+            }
+        }
     }
+
+    /* 启用 TAP 模式的多播支持 */
+    fprintf(fp, "topology subnet\n");
 
     PQclear(res);
 }
@@ -584,7 +637,7 @@ int start_openvpn(int config_id) {
         log_message(LOG_INFO, "OpenVPN 进程已启动，PID=%d", pid);
 
         // 等待一段时间，让OpenVPN完成初始化
-        sleep(0.5);
+        usleep(500000);
         int status;
         pid_t ret = waitpid(pid, &status, WNOHANG);
         if (ret == pid) {

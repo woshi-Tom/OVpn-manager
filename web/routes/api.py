@@ -1,9 +1,19 @@
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, session, redirect, url_for
+from functools import wraps
 import db
 
 bp = Blueprint('api', __name__, url_prefix='/api')
 
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'admin_id' not in session:
+            return jsonify({'status': 'error', 'message': '未授权'}), 401
+        return f(*args, **kwargs)
+    return decorated_function
+
 @bp.route('/online-clients')
+@login_required
 def online_clients():
     sessions = db.execute_query("""
         SELECT s.virtual_ip, s.real_ip, s.connected_since, s.bytes_sent, s.bytes_received,
@@ -17,6 +27,7 @@ def online_clients():
     return jsonify(sessions)
 
 @bp.route('/stats')
+@login_required
 def stats():
     stats = db.execute_query("""
         SELECT
@@ -28,6 +39,7 @@ def stats():
     return jsonify(stats)
 
 @bp.route('/load-history')
+@login_required
 def load_history():
     data = db.execute_query("""
         WITH RECURSIVE time_series AS (
@@ -50,6 +62,7 @@ def load_history():
     return jsonify(data)
 
 @bp.route('/recent-sessions')
+@login_required
 def recent_sessions():
     sessions = db.execute_query("""
         SELECT s.virtual_ip, s.real_ip, s.connected_since, s.disconnected_at,
@@ -63,6 +76,7 @@ def recent_sessions():
     return jsonify(sessions)
 
 @bp.route('/sessions-by-time')
+@login_required
 def sessions_by_time():
     data = db.execute_query("""
         SELECT 

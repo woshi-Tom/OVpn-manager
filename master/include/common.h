@@ -24,4 +24,6 @@
 #define LOG_FILE "/var/log/vpn-manager/core.log"
 #define MAX_BUFFER 65536
 
+int is_shutdown_requested(void);
+
 #endif

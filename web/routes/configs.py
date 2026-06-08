@@ -31,6 +31,7 @@ def list_configs():
     tap_configs = db.execute_query("""
         SELECT c.id, c.config_name, c.mode, c.proto, c.port, c.remote, c.ca_cert, c.server_cert,
                t.bridge_name, t.physical_if, t.dhcp_mode,
+               t.server_ip, t.subnet_mask::text as subnet_mask_text,
                c.status as config_status
         FROM vpn_config c
         LEFT JOIN vpn_config_tap t ON c.id = t.config_id

@@ -5,8 +5,13 @@ import db
 import core_client
 import tempfile
 import os
+import atexit
 
 bp = Blueprint('clients', __name__, url_prefix='/clients')
+
+# 临时文件跟踪，应用退出时清理
+_temp_files = []
+atexit.register(lambda: [os.unlink(f) for f in _temp_files if os.path.exists(f)])
 
 def login_required(f):
     @wraps(f)
@@ -106,6 +111,16 @@ def get_client_config(client_id):
             with tempfile.NamedTemporaryFile(mode='w', suffix='.ovpn', delete=False) as f:
                 f.write(config_data)
                 temp_path = f.name
+            _temp_files.append(temp_path)
+            def cleanup(path):
+                try:
+                    os.unlink(path)
+                    if path in _temp_files:
+                        _temp_files.remove(path)
+                except OSError:
+                    pass
+            import threading
+            threading.Timer(60.0, cleanup, args=[temp_path]).start()
             return send_file(temp_path, as_attachment=True, download_name=f'client_{client_id}.ovpn')
         else:
             return jsonify({'status': 'error', 'message': resp.get('message', '未知错误')})

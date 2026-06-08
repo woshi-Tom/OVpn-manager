@@ -224,7 +224,10 @@ static int clear_config_password(void) {
             char *p = strchr(lines[i], ':');
             if (p) {
                 *++p = ' ';
-                strcpy(p, "  # 已清除，请通过web-db-auth文件认证\n");
+                const char *comment = "  # cleared, auth via web-db-auth\n";
+                size_t remaining = sizeof(lines[i]) - (p - lines[i]);
+                strncpy(p, comment, remaining - 1);
+                lines[i][sizeof(lines[i]) - 1] = '\0';
             }
         }
     }

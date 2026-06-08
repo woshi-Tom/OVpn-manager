@@ -289,21 +289,33 @@ int start_socket_server(void) {
 
     log_message(LOG_INFO, "Unix Socket 服务启动，监听 %s", SOCKET_PATH);
 
-    while (1) {
+    while (!is_shutdown_requested()) {
         struct sockaddr_un client_addr;
         socklen_t client_len = sizeof(client_addr);
         int *client_fd = malloc(sizeof(int));
+        if (!client_fd) {
+            log_message(LOG_ERR, "内存分配失败");
+            continue;
+        }
         *client_fd = accept(sock_fd, (struct sockaddr*)&client_addr, &client_len);
         if (*client_fd < 0) {
-            log_message(LOG_ERR, "accept 失败: %s", strerror(errno));
             free(client_fd);
+            if (is_shutdown_requested()) break;
+            log_message(LOG_ERR, "accept 失败: %s", strerror(errno));
             continue;
         }
         pthread_t thread;
-        pthread_create(&thread, NULL, thread_handler, client_fd);
-        pthread_detach(thread);
+        if (pthread_create(&thread, NULL, thread_handler, client_fd) != 0) {
+            log_message(LOG_ERR, "创建线程失败: %s", strerror(errno));
+            close(*client_fd);
+            free(client_fd);
+        } else {
+            pthread_detach(thread);
+        }
     }
 
+    log_message(LOG_INFO, "Unix Socket 服务正在关闭");
     close(sock_fd);
+    unlink(SOCKET_PATH);
     return 0;
 }

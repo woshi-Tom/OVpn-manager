@@ -154,10 +154,18 @@ static void update_sessions(PGconn *conn, int config_id, const char *status_buf)
             if (has_online) {
                 int session_id = atoi(PQgetvalue(res, 0, 0));
                 PQclear(res);
-                snprintf(sql, sizeof(sql),
-                         "UPDATE vpn_sessions SET bytes_sent = %llu, bytes_received = %llu, last_update = NOW() "
-                         "WHERE id = %d", bytes_sent, bytes_recv, session_id);
-                PGresult *res2 = PQexec(conn, sql);
+                const char *upd_params[3];
+                char session_id_str[16], bytes_sent_str2[32], bytes_recv_str2[32];
+                snprintf(session_id_str, sizeof(session_id_str), "%d", session_id);
+                snprintf(bytes_sent_str2, sizeof(bytes_sent_str2), "%llu", bytes_sent);
+                snprintf(bytes_recv_str2, sizeof(bytes_recv_str2), "%llu", bytes_recv);
+                upd_params[0] = bytes_sent_str2;
+                upd_params[1] = bytes_recv_str2;
+                upd_params[2] = session_id_str;
+                PGresult *res2 = PQexecParams(conn,
+                    "UPDATE vpn_sessions SET bytes_sent = $1::bigint, bytes_received = $2::bigint, last_update = NOW() "
+                    "WHERE id = $3::integer",
+                    3, NULL, upd_params, NULL, NULL, 0);
                 if (PQresultStatus(res2) != PGRES_COMMAND_OK) {
                     log_message(LOG_ERR, "更新会话失败: %s", PQerrorMessage(conn));
                 }
@@ -205,34 +213,43 @@ static void update_sessions(PGconn *conn, int config_id, const char *status_buf)
         free(copy);
     }
 
-    // 标记断开的客户端
+    /* 标记断开的客户端 */
     if (online_count > 0) {
-        // 构建 profile_id 列表字符串
-        char id_list[1024] = "";
+        /* 构建 PostgreSQL 数组格式字符串: {1,2,3} */
+        char id_list[1024] = "{";
         for (int i = 0; i < online_count; i++) {
             char buf[32];
-            snprintf(buf, sizeof(buf), "%d", online_profiles[i]);
-            if (i > 0) strcat(id_list, ",");
+            snprintf(buf, sizeof(buf), "%s%d", (i > 0 ? "," : ""), online_profiles[i]);
             strcat(id_list, buf);
         }
-        char sql[2048];
-        snprintf(sql, sizeof(sql),
-                 "UPDATE vpn_sessions SET disconnected_at = NOW() "
-                 "WHERE config_id = %d AND disconnected_at IS NULL "
-                 "AND client_profile_id NOT IN (%s)",
-                 config_id, id_list);
-        PGresult *res = PQexec(conn, sql);
+        strcat(id_list, "}");
+
+        const char *disc_params[2];
+        char config_id_str[16];
+        snprintf(config_id_str, sizeof(config_id_str), "%d", config_id);
+        disc_params[0] = config_id_str;
+        disc_params[1] = id_list;
+
+        PGresult *res = PQexecParams(conn,
+            "UPDATE vpn_sessions SET disconnected_at = NOW() "
+            "WHERE config_id = $1::integer AND disconnected_at IS NULL "
+            "AND client_profile_id != ALL($2::integer[])",
+            2, NULL, disc_params, NULL, NULL, 0);
         if (PQresultStatus(res) != PGRES_COMMAND_OK) {
             log_message(LOG_ERR, "标记断开会话失败: %s", PQerrorMessage(conn));
         }
         PQclear(res);
     } else {
-        // 没有在线客户端，将所有在线会话标记为断开
-        char sql[256];
-        snprintf(sql, sizeof(sql),
-                 "UPDATE vpn_sessions SET disconnected_at = NOW() "
-                 "WHERE config_id = %d AND disconnected_at IS NULL", config_id);
-        PGresult *res = PQexec(conn, sql);
+        /* 没有在线客户端，将所有在线会话标记为断开 */
+        const char *disc_params[1];
+        char config_id_str[16];
+        snprintf(config_id_str, sizeof(config_id_str), "%d", config_id);
+        disc_params[0] = config_id_str;
+
+        PGresult *res = PQexecParams(conn,
+            "UPDATE vpn_sessions SET disconnected_at = NOW() "
+            "WHERE config_id = $1::integer AND disconnected_at IS NULL",
+            1, NULL, disc_params, NULL, NULL, 0);
         if (PQresultStatus(res) != PGRES_COMMAND_OK) {
             log_message(LOG_ERR, "标记断开会话失败: %s", PQerrorMessage(conn));
         }
@@ -244,31 +261,45 @@ static void* monitor_thread(void *arg) {
     monitor_ctx_t *ctx = (monitor_ctx_t*)arg;
     int config_id = ctx->config_id;
 
+    /* 每个监控线程创建独立的数据库连接，避免线程安全问题 */
+    char conninfo[4096];
+    snprintf(conninfo, sizeof(conninfo),
+             "host=%s port=%d dbname=%s user=%s password=%s sslmode=prefer",
+             g_config.db_host, g_config.db_port, g_config.db_name,
+             g_config.db_user, g_config.db_password);
+    PGconn *thread_conn = PQconnectdb(conninfo);
+    if (PQstatus(thread_conn) != CONNECTION_OK) {
+        log_message(LOG_ERR, "monitor[%d]: 线程数据库连接失败: %s", config_id, PQerrorMessage(thread_conn));
+        PQfinish(thread_conn);
+        return NULL;
+    }
+
     char sock_path[256];
     snprintf(sock_path, sizeof(sock_path), "/var/run/openvpn/management-%d.sock", config_id);
-    
+
     log_message(LOG_INFO, "monitor[%d]: 监控线程启动, socket路径=%s", config_id, sock_path);
 
     while (ctx->running) {
-        // 先检查 OpenVPN 进程是否还在运行，增加重试机制
+        /* 先检查 OpenVPN 进程是否还在运行 */
         pid_t pid = -1;
         for (int retry = 0; retry < 5; retry++) {
             pid = get_openvpn_pid(config_id);
             if (pid > 0 && kill(pid, 0) == 0) {
-                break;  // 进程存在
+                break;
             }
-            usleep(200000); // 等待 200ms，最多 1 秒
+            usleep(200000);
         }
-        
+
         if (pid <= 0 || kill(pid, 0) != 0) {
             log_message(LOG_ERR, "monitor[%d]: OpenVPN 进程不存在或已退出", config_id);
-            // 更新数据库状态为 stopped
-            if (g_conn) {
-                char sql[256];
-                snprintf(sql, sizeof(sql), "UPDATE vpn_config SET status = 'stopped' WHERE id = %d", config_id);
-                PGresult *res = PQexec(g_conn, sql);
-                PQclear(res);
-            }
+            const char *params[1];
+            char config_id_str[16];
+            snprintf(config_id_str, sizeof(config_id_str), "%d", config_id);
+            params[0] = config_id_str;
+            PGresult *res = PQexecParams(thread_conn,
+                "UPDATE vpn_config SET status = 'stopped' WHERE id = $1",
+                1, NULL, params, NULL, NULL, 0);
+            PQclear(res);
             break;
         }
 
@@ -321,16 +352,13 @@ static void* monitor_thread(void *arg) {
         close(sock_fd);
 
         if (total > 0) {
-            if (g_conn) {
-                update_sessions(g_conn, config_id, buffer);
-            } else {
-                log_message(LOG_ERR, "monitor[%d]: 数据库连接已断开", config_id);
-            }
+            update_sessions(thread_conn, config_id, buffer);
         }
 
         sleep(3);
     }
 
+    PQfinish(thread_conn);
     log_message(LOG_INFO, "monitor[%d]: 监控线程退出", config_id);
     return NULL;
 }

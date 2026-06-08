@@ -83,12 +83,11 @@ cJSON* handle_generate_ca_cert(const cJSON *params) {
     fingerprint_to_hex(fingerprint_bin, fingerprint_len, fingerprint_hex);
 
     char *ca_cert_pem = cert_to_pem(ca_cert);
-    log_message(LOG_INFO, "handle_generate_ca_cert: before encrypt, encryption_key=%s", g_config.encryption_key);
+    log_message(LOG_INFO, "handle_generate_ca_cert: generating CA cert");
     char *encrypted_ca_key = encrypt_private_key(ca_key, NULL);
 
-    log_message(LOG_INFO, "handle_generate_ca_cert: ca_cert_pem_len=%zu, encrypted_ca_key_len=%zu, encrypted_ca_key=%.100s", 
-                strlen(ca_cert_pem), encrypted_ca_key ? strlen(encrypted_ca_key) : 0,
-                encrypted_ca_key ? encrypted_ca_key : "NULL");
+    log_message(LOG_INFO, "handle_generate_ca_cert: ca_cert_pem_len=%zu, encrypted_ca_key_len=%zu",
+                strlen(ca_cert_pem), encrypted_ca_key ? strlen(encrypted_ca_key) : 0);
 
     if (!encrypted_ca_key) {
         free(ca_cert_pem);
