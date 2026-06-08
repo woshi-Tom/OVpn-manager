@@ -301,20 +301,8 @@ int generate_openvpn_config(int config_id, char *config_path, size_t path_size) 
     fprintf(fp, "writepid /var/run/openvpn/vpn-%d.pid\n", config_id);
 
     fclose(fp);
-    log_message(LOG_INFO, "配置文件已生成: %s", config_path);
-    
-    // 调试：读取并打印配置文件内容
-    FILE *debug_fp = fopen(config_path, "r");
-    if (debug_fp) {
-        char line[256];
-        log_message(LOG_INFO, "=== 配置文件内容 ===");
-        while (fgets(line, sizeof(line), debug_fp)) {
-            log_message(LOG_INFO, "%s", line);
-        }
-        log_message(LOG_INFO, "=== 配置文件结束 ===");
-        fclose(debug_fp);
-    }
-    
+    log_message(LOG_INFO, "配置文件已生成: %s (mode=%s)", config_path, mode);
+
     PQclear(res);
     return 0;
 }
@@ -394,6 +382,45 @@ static void generate_tun_config(FILE *fp, int config_id) {
     PQclear(res);
 }
 
+/*
+ * 从 server_ip 和 subnet_mask 计算地址池范围
+ * 将 server_ip 所在子网的 .100~.200 作为客户端地址池
+ * 成功返回 1，失败返回 0
+ */
+static int calc_ip_pool(const char *server_ip, const char *subnet_mask,
+                        char *pool_start, size_t start_size,
+                        char *pool_end, size_t end_size) {
+    if (!server_ip || !subnet_mask) return 0;
+
+    struct in_addr addr, mask_addr;
+    if (!inet_aton(server_ip, &addr)) return 0;
+
+    /* 支持点分十进制掩码和 CIDR 格式 */
+    if (!inet_aton(subnet_mask, &mask_addr)) {
+        /* 尝试 CIDR: "192.168.10.0/24" */
+        const char *slash = strchr(subnet_mask, '/');
+        if (!slash) return 0;
+        int bits = atoi(slash + 1);
+        if (bits < 0 || bits > 32) return 0;
+        uint32_t nm = bits == 0 ? 0 : (~0U) << (32 - bits);
+        mask_addr.s_addr = htonl(nm);
+    }
+
+    uint32_t ip = ntohl(addr.s_addr);
+    uint32_t mask = ntohl(mask_addr.s_addr);
+    uint32_t network = ip & mask;
+    /* 地址池: 子网内 .100 ~ .200 */
+    uint32_t start = network | 100;
+    uint32_t end = network | 200;
+
+    struct in_addr sa, ea;
+    sa.s_addr = htonl(start);
+    ea.s_addr = htonl(end);
+    snprintf(pool_start, start_size, "%s", inet_ntoa(sa));
+    snprintf(pool_end, end_size, "%s", inet_ntoa(ea));
+    return 1;
+}
+
 static void generate_tap_config(FILE *fp, int config_id) {
     char sql[2048];
     snprintf(sql, sizeof(sql),
@@ -413,77 +440,74 @@ static void generate_tap_config(FILE *fp, int config_id) {
     const char *server_ip = PQgetvalue(res, 0, 3);
     const char *subnet_mask = PQgetvalue(res, 0, 4);
 
+    int has_bridge = bridge_name && strlen(bridge_name) > 0;
+    int has_phys = physical_if && strlen(physical_if) > 0;
+    int has_ip = server_ip && strlen(server_ip) > 0;
+    int has_mask = subnet_mask && strlen(subnet_mask) > 0;
+    int is_server = dhcp_mode && strcmp(dhcp_mode, "server") == 0;
+
+    /* --- 基本 TAP 配置 --- */
     fprintf(fp, "dev tap\n");
     fprintf(fp, "cipher AES-256-GCM\n");
-
-    /* TAP 模式允许多播和广播，客户端可以互相发现 */
     fprintf(fp, "client-to-client\n");
 
-    if (bridge_name && strlen(bridge_name) > 0) {
-        /* 使用 bridge 指令替代 dev-node，OpenVPN 自动管理网桥 */
-        if (physical_if && strlen(physical_if) > 0) {
-            fprintf(fp, "server-bridge %s %s %s %s\n",
-                    server_ip && strlen(server_ip) > 0 ? server_ip : "192.168.10.1",
-                    subnet_mask && strlen(subnet_mask) > 0 ? subnet_mask : "255.255.255.0",
-                    "192.168.10.128", "192.168.10.254");
-            ensure_bridge_exists(bridge_name, physical_if);
+    /* --- 网桥/地址配置 --- */
+    if (has_bridge && has_phys) {
+        /*
+         * 设计文档要求: 创建网桥设备，将物理网卡加入网桥
+         * OpenVPN 的 server-bridge 指令会自动将 TAP 设备加入指定网桥
+         * 格式: server-bridge <IP> <MASK> <pool_start> <pool_end>
+         *
+         * 必须配合 mode server 使用
+         */
+        if (is_server) {
+            fprintf(fp, "mode server\n");
+            fprintf(fp, "tls-server\n");
+
+            char pool_start[32], pool_end[32];
+            if (has_ip && has_mask && calc_ip_pool(server_ip, subnet_mask, pool_start, sizeof(pool_start), pool_end, sizeof(pool_end))) {
+                fprintf(fp, "server-bridge %s %s %s %s\n", server_ip, subnet_mask, pool_start, pool_end);
+            } else if (has_ip) {
+                /* 只有 IP 没有掩码，使用默认掩码 */
+                fprintf(fp, "server-bridge %s 255.255.255.0 192.168.10.128 192.168.10.254\n", server_ip);
+            } else {
+                /* 没有 IP 信息，使用默认值 */
+                fprintf(fp, "server-bridge 192.168.10.1 255.255.255.0 192.168.10.128 192.168.10.254\n");
+            }
+            fprintf(fp, "ifconfig-pool-persist /var/log/openvpn/ipp-%d.txt\n", config_id);
         } else {
-            fprintf(fp, "dev-node %s\n", bridge_name);
-        }
-    }
-
-    if (dhcp_mode && strcmp(dhcp_mode, "server") == 0) {
-        fprintf(fp, "mode server\n");
-        fprintf(fp, "tls-server\n");
-        if (server_ip && subnet_mask && strlen(server_ip) > 0 && strlen(subnet_mask) > 0) {
-            /* server-bridge 指令格式: server_ip netmask pool_start pool_end */
-            /* 解析子网以确定地址池范围 */
-            struct in_addr addr;
-            if (inet_aton(server_ip, &addr)) {
-                uint32_t ip = ntohl(addr.s_addr);
-                /* 池范围: server_ip+100 ~ server_ip+200 */
-                uint32_t pool_start = (ip & 0xFFFFFF00) | 100;
-                uint32_t pool_end = (ip & 0xFFFFFF00) | 200;
-                char start_str[32], end_str[32];
-                struct in_addr sa, ea;
-                sa.s_addr = htonl(pool_start);
-                ea.s_addr = htonl(pool_end);
-                snprintf(start_str, sizeof(start_str), "%s", inet_ntoa(sa));
-                snprintf(end_str, sizeof(end_str), "%s", inet_ntoa(ea));
-                fprintf(fp, "server-bridge %s %s %s %s\n",
-                        server_ip, subnet_mask, start_str, end_str);
+            /*
+             * 静态 IP 模式 (dhcp_mode=none):
+             * 不需要 mode server，用 ifconfig 设置服务端 IP
+             * 客户端通过 --ifconfig 参数或 CCD 文件分配 IP
+             */
+            if (has_ip && has_mask) {
+                fprintf(fp, "ifconfig %s %s\n", server_ip, subnet_mask);
             }
         }
-        fprintf(fp, "ifconfig-pool-persist /var/log/openvpn/ipp-%d.txt\n", config_id);
-    } else if (dhcp_mode && strcmp(dhcp_mode, "relay") == 0) {
-        log_message(LOG_INFO, "TAP 模式中继模式需要额外配置 DHCP 中继服务器");
-        fprintf(fp, "; DHCP relay mode - requires external DHCP relay agent\n");
-        if (server_ip && subnet_mask && strlen(server_ip) > 0 && strlen(subnet_mask) > 0) {
+
+        /* 准备网桥环境: 创建网桥、绑定物理网卡 */
+        ensure_bridge_exists(bridge_name, physical_if);
+
+    } else if (has_bridge && !has_phys) {
+        /* 有网桥名但无物理网卡，绑定到已存在的网桥 */
+        fprintf(fp, "dev-node %s\n", bridge_name);
+        if (has_ip && has_mask) {
             fprintf(fp, "ifconfig %s %s\n", server_ip, subnet_mask);
         }
+
     } else {
-        /* none: 静态 IP 模式 */
-        if (server_ip && subnet_mask && strlen(server_ip) > 0 && strlen(subnet_mask) > 0) {
+        /* 无网桥: OpenVPN 自动创建 TAP 设备，直接使用 ifconfig */
+        if (has_ip && has_mask) {
             fprintf(fp, "ifconfig %s %s\n", server_ip, subnet_mask);
-            /* 计算客户端地址池: 从 server_ip+100 开始 */
-            struct in_addr addr;
-            if (inet_aton(server_ip, &addr)) {
-                uint32_t ip = ntohl(addr.s_addr);
-                uint32_t pool_start = (ip & 0xFFFFFF00) | 100;
-                uint32_t pool_end = (ip & 0xFFFFFF00) | 200;
-                struct in_addr sa, ea;
-                char start_str[32], end_str[32];
-                sa.s_addr = htonl(pool_start);
-                ea.s_addr = htonl(pool_end);
-                snprintf(start_str, sizeof(start_str), "%s", inet_ntoa(sa));
-                snprintf(end_str, sizeof(end_str), "%s", inet_ntoa(ea));
-                fprintf(fp, "ifconfig-pool %s %s\n", start_str, end_str);
-            }
         }
     }
 
-    /* 启用 TAP 模式的多播支持 */
-    fprintf(fp, "topology subnet\n");
+    /* 中继模式: 需要外部 DHCP 中继代理 */
+    if (dhcp_mode && strcmp(dhcp_mode, "relay") == 0) {
+        log_message(LOG_INFO, "TAP relay 模式需要外部 DHCP 中继服务器");
+        fprintf(fp, "; DHCP relay mode - requires external DHCP relay agent\n");
+    }
 
     PQclear(res);
 }
