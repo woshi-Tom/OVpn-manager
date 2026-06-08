@@ -464,7 +464,7 @@ sudo ./packaging/scripts/uninstall.sh
 ## Contributing
 
 欢迎提交 Issue 和 Pull Request。详见 [CONTRIBUTING.md](packaging/CONTRIBUTING.md)。
-另外感谢`linux.do`论坛(https://linux.do/)的开源推广
+另外感谢`linux.do`[论坛](https://linux.do/)的开源推广板块。
 
 ---
 
