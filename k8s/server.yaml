@@ -1,0 +1,110 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: vpn-server
+  namespace: vpn-manager
+spec:
+  selector:
+    matchLabels:
+      app: vpn-server
+  template:
+    metadata:
+      labels:
+        app: vpn-server
+    spec:
+      # hostNetwork: OpenVPN 需要直接绑定宿主机端口（UDP 1194）
+      # 如果只用 NodePort 暴露，可以去掉 hostNetwork
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+        - name: server
+          image: vpn-server:latest
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            privileged: true       # OpenVPN 需要 TUN/TAP 设备
+          ports:
+            - containerPort: 9000
+              name: core-ipc
+              protocol: TCP
+            - containerPort: 1194
+              name: openvpn-udp
+              protocol: UDP
+          env:
+            - name: DB_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: vpn-secret
+                  key: DB_HOST
+            - name: DB_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: vpn-secret
+                  key: DB_PORT
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: vpn-secret
+                  key: DB_NAME
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: vpn-secret
+                  key: DB_USER
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: vpn-secret
+                  key: DB_PASSWORD
+            - name: ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: vpn-secret
+                  key: ENCRYPTION_KEY
+            - name: LISTEN_PORT
+              value: "9000"
+            - name: LOG_LEVEL
+              value: "info"
+          volumeMounts:
+            - name: openvpn-run
+              mountPath: /var/run/openvpn
+            - name: openvpn-log
+              mountPath: /var/log/openvpn
+            - name: pki
+              mountPath: /var/lib/vpn-manager/pki
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "1000m"
+      volumes:
+        - name: openvpn-run
+          hostPath:
+            path: /var/run/openvpn
+            type: DirectoryOrCreate
+        - name: openvpn-log
+          hostPath:
+            path: /var/log/openvpn
+            type: DirectoryOrCreate
+        - name: pki
+          hostPath:
+            path: /var/lib/vpn-manager/pki
+            type: DirectoryOrCreate
+      nodeSelector:
+        kubernetes.io/os: linux
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vpn-server-service
+  namespace: vpn-manager
+spec:
+  selector:
+    app: vpn-server
+  ports:
+    - name: core-ipc
+      port: 9000
+      targetPort: 9000
+      protocol: TCP
+  type: ClusterIP

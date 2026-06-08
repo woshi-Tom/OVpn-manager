@@ -13,20 +13,28 @@ RUN cd master && make clean && make
 FROM debian:12-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    openvpn openssl libpq5 libyaml-0-2 libcjson1 \
-    iproute2 iptables \
+    openvpn \
+    openssl \
+    libpq5 libyaml-0-2 libcjson1 \
+    iproute2 iptables kmod \
     && rm -rf /var/lib/apt/lists/*
 
-# 创建必要目录
+# 创建运行时目录
 RUN mkdir -p /etc/vpn-manager /etc/openvpn \
     /var/run/openvpn /var/log/vpn-manager /var/log/openvpn \
     /var/run/vpn-manager /var/lib/vpn-manager/pki
 
+# 复制 Core 二进制和初始化脚本
 COPY --from=builder /build/master/vpn_core /usr/local/bin/vpn-core
 COPY schema.sql /etc/vpn-manager/schema.sql
+COPY docker/entrypoint-server.sh /entrypoint.sh
 
-RUN chmod +x /usr/local/bin/vpn-core
+RUN chmod +x /usr/local/bin/vpn-core /entrypoint.sh
 
+# Core IPC 端口（Web 通过此端口通信）
 EXPOSE 9000
+# OpenVPN 默认端口（可在 core.yaml 中修改）
+EXPOSE 1194/udp
+EXPOSE 1194/tcp
 
-ENTRYPOINT ["/usr/local/bin/vpn-core"]
+ENTRYPOINT ["/entrypoint.sh"]

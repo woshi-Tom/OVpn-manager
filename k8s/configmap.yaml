@@ -30,7 +30,7 @@ data:
       port: 5000
 
     socket:
-      core_host: "vpn-core-service"
+      core_host: "vpn-server-service"
       core_port: 9000
 
     log:
