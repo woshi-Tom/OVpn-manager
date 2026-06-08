@@ -61,6 +61,8 @@ int parse_config(const char *path) {
     g_config.openvpn.binary[0] = g_config.openvpn.config_dir[0] = g_config.openvpn.management_socket[0] = '\0';
     g_config.pki.ca_key[0] = '\0';
     g_config.master_key_file[0] = '\0';
+    g_config.listen_port = 0;  // 0 = 默认使用 Unix Socket
+    safe_strcpy(g_config.listen_host, "0.0.0.0", sizeof(g_config.listen_host));
 
     yaml_token_t token;
     int done = 0;
@@ -130,6 +132,10 @@ int parse_config(const char *path) {
                                 // 等待下一个值
                             } else if (strcmp(value, "encryption_key") == 0) {
                                 // 等待下一个值
+                            } else if (strcmp(value, "listen_port") == 0) {
+                                // 等待下一个值
+                            } else if (strcmp(value, "listen_host") == 0) {
+                                // 等待下一个值
                             }
                         } else {
                             // 处理之前记录的顶层键的值
@@ -137,6 +143,10 @@ int parse_config(const char *path) {
                                 safe_strcpy(g_config.master_key_file, value, sizeof(g_config.master_key_file));
                             } else if (strcmp(current_section, "encryption_key") == 0) {
                                 safe_strcpy(g_config.encryption_key, value, sizeof(g_config.encryption_key));
+                            } else if (strcmp(current_section, "listen_port") == 0) {
+                                g_config.listen_port = atoi(value);
+                            } else if (strcmp(current_section, "listen_host") == 0) {
+                                safe_strcpy(g_config.listen_host, value, sizeof(g_config.listen_host));
                             }
                         }
                     }

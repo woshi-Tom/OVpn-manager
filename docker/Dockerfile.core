@@ -1,0 +1,32 @@
+FROM debian:12-slim AS builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc make libpq-dev libyaml-dev libcjson-dev libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+COPY master/ ./master/
+
+RUN cd master && make clean && make
+
+# --- Runtime ---
+FROM debian:12-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openvpn openssl libpq5 libyaml-0-2 libcjson1 \
+    iproute2 iptables \
+    && rm -rf /var/lib/apt/lists/*
+
+# 创建必要目录
+RUN mkdir -p /etc/vpn-manager /etc/openvpn \
+    /var/run/openvpn /var/log/vpn-manager /var/log/openvpn \
+    /var/run/vpn-manager /var/lib/vpn-manager/pki
+
+COPY --from=builder /build/master/vpn_core /usr/local/bin/vpn-core
+COPY schema.sql /etc/vpn-manager/schema.sql
+
+RUN chmod +x /usr/local/bin/vpn-core
+
+EXPOSE 9000
+
+ENTRYPOINT ["/usr/local/bin/vpn-core"]

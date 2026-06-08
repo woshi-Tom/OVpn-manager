@@ -11,6 +11,7 @@
 
 #include <pthread.h>
 #include <libgen.h>
+#include <arpa/inet.h>
 
 static cJSON* handle_ping(const cJSON *params);
 static cJSON* handle_status(const cJSON *params);
@@ -245,52 +246,89 @@ static cJSON* dispatch_request(const cJSON *req) {
 }
 
 int start_socket_server(void) {
-    int sock_fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (sock_fd < 0) {
-        log_message(LOG_ERR, "创建 socket 失败: %s", strerror(errno));
-        return -1;
-    }
+    int sock_fd;
+    int use_tcp = (g_config.listen_port > 0);
 
-    struct sockaddr_un addr;
-    memset(&addr, 0, sizeof(addr));
-    addr.sun_family = AF_UNIX;
-    strncpy(addr.sun_path, SOCKET_PATH, sizeof(addr.sun_path)-1);
+    if (use_tcp) {
+        /* TCP 模式（K8s / 跨网络通信） */
+        sock_fd = socket(AF_INET, SOCK_STREAM, 0);
+        if (sock_fd < 0) {
+            log_message(LOG_ERR, "创建 TCP socket 失败: %s", strerror(errno));
+            return -1;
+        }
 
-    unlink(SOCKET_PATH);
+        int opt = 1;
+        setsockopt(sock_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
-    char *sock_path_dup = strdup(SOCKET_PATH);
-    char *sock_dir = dirname(sock_path_dup);
-    struct stat st = {0};
-    if (stat(sock_dir, &st) == -1) {
-        if (mkdir(sock_dir, 0755) == -1) {
-            log_message(LOG_ERR, "创建 socket 目录失败: %s", strerror(errno));
-            free(sock_path_dup);
+        struct sockaddr_in tcp_addr;
+        memset(&tcp_addr, 0, sizeof(tcp_addr));
+        tcp_addr.sin_family = AF_INET;
+        tcp_addr.sin_port = htons(g_config.listen_port);
+        if (inet_pton(AF_INET, g_config.listen_host, &tcp_addr.sin_addr) <= 0) {
+            log_message(LOG_ERR, "无效的监听地址: %s", g_config.listen_host);
             close(sock_fd);
             return -1;
         }
-    }
-    free(sock_path_dup);
 
-    if (bind(sock_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
-        log_message(LOG_ERR, "绑定 socket 失败: %s", strerror(errno));
-        close(sock_fd);
-        return -1;
-    }
+        if (bind(sock_fd, (struct sockaddr*)&tcp_addr, sizeof(tcp_addr)) < 0) {
+            log_message(LOG_ERR, "绑定 TCP %s:%d 失败: %s",
+                        g_config.listen_host, g_config.listen_port, strerror(errno));
+            close(sock_fd);
+            return -1;
+        }
 
-    if (chmod(SOCKET_PATH, 0660) < 0) {
-        log_message(LOG_ERR, "设置 socket 权限失败: %s", strerror(errno));
+        log_message(LOG_INFO, "TCP Socket 服务启动，监听 %s:%d",
+                    g_config.listen_host, g_config.listen_port);
+    } else {
+        /* Unix Socket 模式（传统部署） */
+        sock_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+        if (sock_fd < 0) {
+            log_message(LOG_ERR, "创建 Unix socket 失败: %s", strerror(errno));
+            return -1;
+        }
+
+        struct sockaddr_un un_addr;
+        memset(&un_addr, 0, sizeof(un_addr));
+        un_addr.sun_family = AF_UNIX;
+        strncpy(un_addr.sun_path, SOCKET_PATH, sizeof(un_addr.sun_path)-1);
+
+        unlink(SOCKET_PATH);
+
+        char *sock_path_dup = strdup(SOCKET_PATH);
+        char *sock_dir = dirname(sock_path_dup);
+        struct stat st = {0};
+        if (stat(sock_dir, &st) == -1) {
+            if (mkdir(sock_dir, 0755) == -1) {
+                log_message(LOG_ERR, "创建 socket 目录失败: %s", strerror(errno));
+                free(sock_path_dup);
+                close(sock_fd);
+                return -1;
+            }
+        }
+        free(sock_path_dup);
+
+        if (bind(sock_fd, (struct sockaddr*)&un_addr, sizeof(un_addr)) < 0) {
+            log_message(LOG_ERR, "绑定 Unix socket 失败: %s", strerror(errno));
+            close(sock_fd);
+            return -1;
+        }
+
+        if (chmod(SOCKET_PATH, 0660) < 0) {
+            log_message(LOG_ERR, "设置 socket 权限失败: %s", strerror(errno));
+        }
+
+        log_message(LOG_INFO, "Unix Socket 服务启动，监听 %s", SOCKET_PATH);
     }
 
     if (listen(sock_fd, 5) < 0) {
         log_message(LOG_ERR, "监听 socket 失败: %s", strerror(errno));
         close(sock_fd);
+        if (!use_tcp) unlink(SOCKET_PATH);
         return -1;
     }
 
-    log_message(LOG_INFO, "Unix Socket 服务启动，监听 %s", SOCKET_PATH);
-
     while (!is_shutdown_requested()) {
-        struct sockaddr_un client_addr;
+        struct sockaddr_storage client_addr;
         socklen_t client_len = sizeof(client_addr);
         int *client_fd = malloc(sizeof(int));
         if (!client_fd) {
@@ -314,8 +352,8 @@ int start_socket_server(void) {
         }
     }
 
-    log_message(LOG_INFO, "Unix Socket 服务正在关闭");
+    log_message(LOG_INFO, "Socket 服务正在关闭");
     close(sock_fd);
-    unlink(SOCKET_PATH);
+    if (!use_tcp) unlink(SOCKET_PATH);
     return 0;
 }

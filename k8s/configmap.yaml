@@ -1,0 +1,38 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vpn-config
+  namespace: vpn-manager
+data:
+  # Core 配置（不含密码，密码在 Secret 中）
+  core.yaml: |
+    listen_host: "0.0.0.0"
+    listen_port: 9000
+
+    log:
+      level: info
+      file: /dev/stdout
+
+    openvpn:
+      binary: /usr/sbin/openvpn
+      config_dir: /etc/openvpn
+      management_socket: /var/run/openvpn/management.sock
+
+    pki:
+      ca_key: /var/lib/vpn-manager/pki/ca.key
+
+  # Web 配置
+  web.yaml: |
+    flask:
+      secret_key: "CHANGE_ME_IN_PRODUCTION"
+      debug: false
+      host: 0.0.0.0
+      port: 5000
+
+    socket:
+      core_host: "vpn-core-service"
+      core_port: 9000
+
+    log:
+      level: info
+      file: /dev/stdout

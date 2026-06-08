@@ -24,6 +24,8 @@ typedef struct {
     struct {
         char ca_key[256];
     } pki;
+    int listen_port;       // TCP 监听端口（0 = 使用 Unix Socket）
+    char listen_host[64];  // TCP 监听地址（默认 0.0.0.0）
 } core_config_t;
 
 extern core_config_t g_config;  // 全局配置变量
