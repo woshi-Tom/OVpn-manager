@@ -83,27 +83,41 @@ case "$1" in
         ;;
         
     logs)
+        echo "=== Core 日志 ==="
         if [[ -f /var/log/vpn-manager/core.log ]]; then
             tail -50 /var/log/vpn-manager/core.log
         else
-            print_err "日志文件不存在"
+            print_err "Core 日志文件不存在"
+        fi
+        echo ""
+        echo "=== Web 日志 ==="
+        if [[ -f /var/log/vpn-manager/web.log ]]; then
+            tail -20 /var/log/vpn-manager/web.log
+        else
+            print_err "Web 日志文件不存在"
         fi
         ;;
-        
+
     logs-f)
         if [[ -f /var/log/vpn-manager/core.log ]]; then
-            tail -f /var/log/vpn-manager/core.log
+            tail -f /var/log/vpn-manager/core.log /var/log/vpn-manager/web.log 2>/dev/null
         else
             print_err "日志文件不存在"
         fi
         ;;
-        
+
     init)
         check_root
         print_info "初始化数据库..."
-        
+
+        # 从 core.yaml 读取数据库名（如果存在）
+        DB_NAME=$(grep -A5 '^database:' /etc/vpn-manager/core.yaml 2>/dev/null | grep 'name:' | awk '{print $2}' | tr -d '"')
+        DB_USER=$(grep -A5 '^database:' /etc/vpn-manager/core.yaml 2>/dev/null | grep 'user:' | awk '{print $2}' | tr -d '"')
+        DB_NAME=${DB_NAME:-vpn_db}
+        DB_USER=${DB_USER:-vpn_core}
+
         if [[ -f /etc/vpn-manager/schema.sql ]]; then
-            psql -U vpn_core -d vpn_db -f /etc/vpn-manager/schema.sql
+            psql -U "$DB_USER" -d "$DB_NAME" -f /etc/vpn-manager/schema.sql
             if [[ $? -eq 0 ]]; then
                 print_ok "数据库初始化完成"
             else

@@ -1,5 +1,5 @@
 #!/bin/bash
-cd /srv/opencode-deepseek/myProject/web
-. /root/openvpn-manager/web/venv_vpn/bin/activate
+cd /workspace/web
+source /opt/vpn-web-venv/bin/activate
 export PYTHONPATH=.
 python3 app.py

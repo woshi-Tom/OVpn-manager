@@ -40,7 +40,7 @@ git clone <your-fork-url>
 cd vpn-manager
 
 # 2. 安装依赖
-apt-get install -y postgresql-client openvpn openssl gcc make libpq-dev python3 python3-pip python3-venv
+apt-get install -y postgresql-client openvpn openssl gcc make libpq-dev libyaml-dev libcjson-dev libssl-dev python3 python3-pip python3-venv
 
 # 3. 编译 Core
 cd master
@@ -50,7 +50,7 @@ make
 cd ../web
 python3 -m venv venv
 source venv/bin/activate
-pip install flask psycopg2-binary pyyaml python-socketio eventlet
+pip install -r requirements.txt
 
 # 5. 配置数据库
 # 创建测试数据库并配置 core.yaml

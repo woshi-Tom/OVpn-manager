@@ -76,7 +76,7 @@ echo ""
 # 1. 安装系统依赖
 print_info "1. 安装系统依赖..."
 apt-get update
-apt-get install -y postgresql-client openvpn openssl gcc make libpq-dev python3 python3-pip python3-venv
+apt-get install -y postgresql-client openvpn openssl gcc make libpq-dev libyaml-dev libcjson-dev libssl-dev python3 python3-pip python3-venv
 print_ok "系统依赖安装完成"
 
 # 2. 创建目录
@@ -129,6 +129,17 @@ log:
   file: $LOG_DIR/web.log
 EOF
 
+# 生成 Web 数据库认证文件（Web 通过此文件读取数据库密码）
+cat > "$CONFIG_DIR/web-db-auth" << EOF
+host=$DB_HOST
+port=$DB_PORT
+dbname=$DB_NAME
+user=vpn_web
+password=$DB_PASSWORD
+EOF
+chmod 640 "$CONFIG_DIR/web-db-auth"
+chown root:www-data "$CONFIG_DIR/web-db-auth"
+
 print_ok "配置文件已生成"
 
 # 4. 复制 schema.sql
@@ -142,8 +153,8 @@ print_info "5. 编译 Core..."
 cd "$CORE_DIR"
 make clean
 make
-if [[ -f "vpn-core" ]]; then
-    cp vpn-core /usr/local/bin/
+if [[ -f "vpn_core" ]]; then
+    cp vpn_core /usr/local/bin/vpn-core
     chmod +x /usr/local/bin/vpn-core
     print_ok "Core 编译完成"
 else
@@ -153,8 +164,7 @@ fi
 
 # 6. 安装 Web 依赖
 print_info "6. 安装 Web 依赖..."
-cd "$WEB_DIR"
-cp -r ..
+cp -r "$PROJECT_DIR/web/"* "$WEB_DIR/"
 
 # 创建虚拟环境
 python3 -m venv /opt/vpn-web-venv
@@ -162,21 +172,25 @@ source /opt/vpn-web-venv/bin/activate
 
 # 安装 Python 依赖
 pip install --upgrade pip
-pip install flask psycopg2-binary pyyaml python-socketio eventlet gunicorn
+if [[ -f "$WEB_DIR/requirements.txt" ]]; then
+    pip install -r "$WEB_DIR/requirements.txt"
+else
+    pip install flask psycopg2-binary pyyaml bcrypt
+fi
 deactivate
 
 print_ok "Web 依赖安装完成"
 
 # 7. 复制 systemd 服务
 print_info "7. 安装 systemd 服务..."
-sed "s|__WEB_DIR__|/workspace/web|g" "$SCRIPT_DIR/services/vpn-web.service" > /etc/systemd/system/vpn-web.service
-cp "$SCRIPT_DIR/services/vpn-core.service" /etc/systemd/system/
+sed "s|__WEB_DIR__|/workspace/web|g" "$PROJECT_DIR/services/vpn-web.service" > /etc/systemd/system/vpn-web.service
+cp "$PROJECT_DIR/services/vpn-core.service" /etc/systemd/system/
 systemctl daemon-reload
 print_ok "systemd 服务已安装"
 
 # 8. 安装管理脚本
 print_info "8. 安装管理脚本..."
-cp "$SCRIPT_DIR/scripts/vpn-manager" /usr/local/bin/
+cp "$SCRIPT_DIR/vpn-manager" /usr/local/bin/
 chmod +x /usr/local/bin/vpn-manager
 print_ok "管理脚本已安装"
 
@@ -185,7 +199,6 @@ print_info "9. 设置权限..."
 chmod 640 "$CONFIG_DIR/core.yaml"
 chmod 640 "$CONFIG_DIR/web.yaml"
 chown root:root "$CONFIG_DIR/core.yaml" "$CONFIG_DIR/web.yaml"
-chown root:www-data "$CONFIG_DIR/web-db-auth" 2>/dev/null || true
 print_ok "权限设置完成"
 
 echo ""

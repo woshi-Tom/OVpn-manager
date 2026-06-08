@@ -45,6 +45,9 @@ apt-get install -y \
     gcc \
     make \
     libpq-dev \
+    libyaml-dev \
+    libcjson-dev \
+    libssl-dev \
     python3 \
     python3-pip \
     python3-venv
@@ -53,17 +56,15 @@ apt-get install -y \
 ### 3. 安装 VPN Manager
 
 ```bash
-# 复制安装包
-cp -r packaging /
-
-# 进入安装目录
-cd /packaging
+# 克隆仓库
+git clone https://github.com/woshi-Tom/OVpn-manager.git
+cd OVpn-manager
 
 # 添加执行权限
-chmod +x scripts/*.sh
+chmod +x packaging/scripts/*.sh
 
-# 运行安装脚本
-./scripts/install.sh
+# 运行安装脚本（需要 root 权限）
+sudo ./packaging/scripts/install.sh
 ```
 
 安装脚本会：
@@ -104,6 +105,8 @@ vpn-manager enable
 默认管理员账号：
 - 用户名：`admin`
 - 密码：`admin123`
+
+> ⚠️ **安全提示：首次登录后请立即修改默认密码！** 默认密码仅用于初始配置，不修改将存在安全风险。
 
 ## 目录说明
 
